@@ -57,32 +57,197 @@ AssertEval(caseName, source, expected, env := 0, evaluator := 0) {
 AssertMakeEnv(caseName) {
     global mainInterpreter
     try {
-        initialEnv := Map("prefix", "Hello, ")
+        initialEnv := Environment()
+        initialEnv.AddString("prefix", "Hello, ")
         variables := mainInterpreter.Eval(
             '(make-env (name "Ada") (greeting (concat $prefix $name)) (ready (> 2 1)))',
             initialEnv)
-        if !(variables is Map) || variables.Count != 3
-            throw Error("expected a map containing three declared variables")
-        if (variables["name"] != "Ada" || variables["greeting"] != "Hello, Ada" || variables["ready"] != true)
+        if !(variables is Environment) || mainInterpreter.Eval("(length $env)", Map("env", variables)) != 3
+            throw Error("expected an environment containing three declared variables")
+        if (mainInterpreter.Eval("$name", variables) != "Ada"
+            || mainInterpreter.Eval("$greeting", variables) != "Hello, Ada"
+            || !mainInterpreter.Eval("$ready", variables))
             throw Error("expected declared values and earlier bindings to be available")
         if (mainInterpreter.Eval('(concat $greeting "!")', variables) != "Hello, Ada!")
             throw Error("expected returned variables to be usable in a later Eval call")
-        if initialEnv.Has("name") || initialEnv.Has("greeting")
+        if (mainInterpreter.Eval('(contains $env "name")', Map("env", initialEnv)))
             throw Error("expected the original environment to remain unchanged")
 
-        objectEnv := {prefix: "Hi, "}
-        objectVariables := mainInterpreter.Eval('(make-env (greeting (concat $prefix "Ada")))', objectEnv)
-        if (objectVariables["greeting"] != "Hi, Ada")
-            throw Error("expected object environment properties to be visible")
+        nested := mainInterpreter.Eval('(make-env (name (get (make-env (value "nested")) "value")))')
+        if (nested.Get("name") != "nested")
+            throw Error("expected nested make-env to use an Environment scope")
 
         arrayVariables := mainInterpreter.Eval(
             ["make-env", ["name", "Ada"], ["greeting", ['(concat "Hi, " $name)']]])
-        if (arrayVariables["greeting"] != "Hi, Ada")
+        if (mainInterpreter.Eval("$greeting", arrayVariables) != "Hi, Ada")
             throw Error("expected expression arrays to support sequential bindings")
         RecordResult("PASS", caseName)
     } catch as err {
         RecordResult("FAIL", caseName, err.Message)
     }
+}
+
+AssertEnvironment(caseName) {
+    global mainInterpreter
+    try {
+        env := Environment()
+        env.AddBoolean("enabled", false)
+        env.AddNumber("count", 0)
+        env.AddNumber("fraction", 1.5)
+        env.AddString("name", "Ada")
+        for value in [0, -42, 0x7F, 9223372036854775807, 0.0, -1.5, 1e4, 1e-10] {
+            env.AddNumber("numeric", value)
+            if (Type(env.Get("numeric")) != Type(value) || env.Get("numeric") != value)
+                throw Error("expected AddNumber to preserve integer and float values")
+        }
+        allowed := Map("AddBoolean", true, "AddNumber", true, "AddString", true,
+            "AddEnvironment", true, "Get", true, "__Enum", true)
+        for name, value in ObjOwnProps(env) {
+            if !allowed.Has(name)
+                throw Error("unexpected environment member: " name)
+        }
+        if (env.Get("name") != "Ada")
+            throw Error("expected Get to return the value for a name")
+        noNameRejected := false
+        try env.Get()
+        catch Error
+            noNameRejected := true
+        if !noNameRejected
+            throw Error("expected Get to require a name")
+        missingRejected := false
+        try env.Get("missing")
+        catch EvaluationError
+            missingRejected := true
+        if !missingRejected
+            throw Error("expected Get to reject missing names")
+        constructorRejected := false
+        try Environment(Map("name", "initial"))
+        catch Error
+            constructorRejected := true
+        if !constructorRejected
+            throw Error("expected constructor to reject initial bindings")
+        if !(env.Get("enabled") is _LispBoolean) || (env.Get("count") is _LispBoolean)
+            throw Error("expected boolean false and numeric zero to remain distinct")
+        if (mainInterpreter.Eval('(if $enabled "yes" $name)', env) != "Ada"
+            || mainInterpreter.Eval("(+ $count $fraction)", env) != 1.5)
+            throw Error("expected typed bindings to be visible to Eval")
+        numeric := mainInterpreter.Eval('(make-env (integer -42) (float 1.5) (exponent 1e4) (text "42"))')
+        if !(numeric.Get("integer") is Integer) || !(numeric.Get("float") is Float)
+            || !(numeric.Get("exponent") is Float) || !(numeric.Get("text") is String)
+            throw Error("expected make-env to preserve number and numeric string types")
+
+        incoming := Environment()
+        incoming.AddString("name", "Grace")
+        incoming.AddBoolean("enabled", true)
+        if (env.AddEnvironment(incoming) != env)
+            throw Error("expected AddEnvironment to return the destination")
+        incoming.AddString("name", "Lin")
+        if (mainInterpreter.Eval("$name", env) != "Grace"
+            || !mainInterpreter.Eval("$enabled", env))
+            throw Error("expected independent bindings with incoming values replacing duplicates")
+        env.AddEnvironment(env)
+        if (mainInterpreter.Eval("$name", env) != "Grace")
+            throw Error("expected self-merge to preserve values")
+        extraArgRejected := false
+        try env.AddEnvironment(incoming, (name, value) => 0)
+        catch Error
+            extraArgRejected := true
+        if !extraArgRejected
+            throw Error("expected AddEnvironment to accept only one environment")
+
+        derived := mainInterpreter.Eval('(make-env (name (concat $name "!")) (ready nil) (count 0))', env)
+        if !(derived is Environment) || !(derived.Get("ready") is _LispBoolean)
+            || (derived.Get("count") is _LispBoolean)
+            throw Error("expected make-env to preserve tagged booleans and numeric values")
+        if (mainInterpreter.Eval("$name", env) != "Grace"
+            || mainInterpreter.Eval("$name", derived) != "Grace!")
+            throw Error("expected make-env to shadow without changing its input")
+        env.AddEnvironment(derived)
+        if (mainInterpreter.Eval("$name", env) != "Grace!"
+            || mainInterpreter.Eval("(if $ready 1 2)", env) != 2)
+            throw Error("expected make-env result to merge into the original")
+        if (mainInterpreter.Eval('(contains (make-env (name "Ada")) "name")') != true
+            || mainInterpreter.Eval('(contains (make-env) "name")') != false
+            || mainInterpreter.Eval('(contains (make-env (name "Ada")) "Name")') != false
+            || mainInterpreter.Eval('(if (get (make-env (ready nil)) "ready") 1 2)') != 2)
+            throw Error("expected environment get, contains and boolean values to work")
+
+        for unsupported in [Map("key", "value"), {name: "Ada"}, Environment(), NoResult()] {
+            rejected := false
+            try mainInterpreter.Eval(["make-env", ["item", unsupported]])
+            catch EvaluationError as err {
+                if InStr(err.Message, "binding value must be a boolean, number, or string")
+                    rejected := true
+            }
+            if !rejected
+                throw Error("expected make-env to reject unsupported value: " Type(unsupported))
+        }
+
+        for invalid in [() => env.AddBoolean("bad", 2), () => env.AddBoolean("bad", "0"),
+            () => env.AddNumber("bad", "1"), () => env.AddString("bad", 1),
+            () => env.AddString("", "x"), () => env.AddString("bad.name", "x"),
+            () => env.AddString("bad name", "x"), () => env.AddString("bad[", "x"),
+            () => env.AddString("bad]", "x"), () => env.AddString('bad"', "x"),
+            () => env.AddEnvironment(Map())] {
+            rejected := false
+            try invalid.Call()
+            catch TypeError
+                rejected := true
+            catch ValueError
+                rejected := true
+            if !rejected
+                throw Error("expected invalid environment input to be rejected")
+        }
+        RecordResult("PASS", caseName)
+    } catch as err {
+        RecordResult("FAIL", caseName, err.Message)
+    }
+}
+
+AssertBooleanFactory(caseName) {
+    try {
+        for value in [2, -1, 0.0, "0", "true", Map()] {
+            rejected := false
+            try Interpreter.Boolean(value)
+            catch TypeError
+                rejected := true
+            if !rejected
+                throw Error("expected invalid factory input to be rejected")
+        }
+        RecordResult("PASS", caseName)
+    } catch as err {
+        RecordResult("FAIL", caseName, err.Message)
+    }
+}
+
+AssertInterpreterFacade(caseName) {
+    try {
+        instance := Interpreter()
+        for name, value in ObjOwnProps(instance) {
+            if (name != "Eval")
+                throw Error("unexpected interpreter member: " name)
+        }
+        for name in ["_Evaluate", "_CopyEnvironment", "_CreateEnvironment",
+            "builtins", "expressionCache", "expressionCacheLimit"] {
+            if HasProp(instance, name)
+                throw Error("internal interpreter member exposed: " name)
+        }
+        if (instance.Eval("(+ 2 3)") != 5)
+            throw Error("expected public Eval to evaluate expressions")
+        RecordResult("PASS", caseName)
+    } catch as err {
+        RecordResult("FAIL", caseName, err.Message)
+    }
+}
+
+CaptureFailedForm(instance, source) {
+    try instance.Eval(source)
+    catch EvaluationError as err {
+        if err.HasOwnProp("expr") && (err.expr is SyntaxForm)
+            return err.expr
+        throw err
+    }
+    throw Error("expected evaluation to fail")
 }
 
 AssertEvalCache(caseName) {
@@ -92,9 +257,9 @@ AssertEvalCache(caseName) {
         second := cachedInterpreter.Eval('(concat $value "!")', Map("value", "Grace"))
         if (first != "Ada!" || second != "Grace!")
             throw Error("expected environment-specific results Ada! and Grace!")
-        if (cachedInterpreter.expressionCache.Count != 1)
-            throw Error("expected parsed expression to be cached once")
-
+        if (CaptureFailedForm(cachedInterpreter, "(unknown-cache 1)")
+            != CaptureFailedForm(cachedInterpreter, "(unknown-cache 1)"))
+            throw Error("expected repeated source to reuse its parsed form")
         nestedInterpreter := Interpreter()
         nested := ["concat", ['(concat $value "!")']]
         first := nestedInterpreter.Eval(nested, Map("value", "Ada"))
@@ -102,8 +267,9 @@ AssertEvalCache(caseName) {
         direct := nestedInterpreter.Eval('(concat $value "!")', Map("value", "Lin"))
         if (first != "Ada!" || second != "Grace!" || direct != "Lin!")
             throw Error("expected nested and direct source forms to reevaluate with their environments")
-        if (nestedInterpreter.expressionCache.Count != 1)
-            throw Error("expected nested and direct source forms to share one cached parse")
+        if (CaptureFailedForm(nestedInterpreter, ["concat", ["(unknown-cache 2)"]])
+            != CaptureFailedForm(nestedInterpreter, "(unknown-cache 2)"))
+            throw Error("expected nested and direct source forms to share a cached parse")
         RecordResult("PASS", caseName)
     } catch as err {
         RecordResult("FAIL", caseName, err.Message)
@@ -111,20 +277,21 @@ AssertEvalCache(caseName) {
 }
 
 AssertCacheConfiguration(caseName) {
-    global mainInterpreter
     global boundedCachedInterpreter
     try {
-        if (mainInterpreter.expressionCacheLimit != 256)
-            throw Error("expected default cache size 256, got " mainInterpreter.expressionCacheLimit)
-        boundedCachedInterpreter.Eval("(+ 1 2)")
-        boundedCachedInterpreter.Eval("(* 2 3)")
-        boundedCachedInterpreter.Eval("(+ 1 2)")
-        if (boundedCachedInterpreter.expressionCache.Count != 1 || boundedCachedInterpreter.expressionCache.Has("(* 2 3)"))
-            throw Error("expected size-one cache to evict the older expression")
-        uncachedInterpreter.Eval("(+ 1 2)")
-        uncachedInterpreter.Eval(["concat", "(+ 1 2)"])
-        if (uncachedInterpreter.expressionCache.Count != 0)
-            throw Error("expected zero-size cache to remain empty")
+        if (boundedCachedInterpreter.Eval("(+ 1 2)") != 3
+            || boundedCachedInterpreter.Eval("(* 2 3)") != 6
+            || boundedCachedInterpreter.Eval("(+ 1 2)") != 3
+            || uncachedInterpreter.Eval("(+ 1 2)") != 3
+            || uncachedInterpreter.Eval(["concat", "(+ 1 2)"]) != "(+ 1 2)")
+            throw Error("expected bounded and disabled caches to preserve evaluation")
+        first := CaptureFailedForm(boundedCachedInterpreter, "(unknown-cache 1)")
+        CaptureFailedForm(boundedCachedInterpreter, "(unknown-cache 2)")
+        if (first == CaptureFailedForm(boundedCachedInterpreter, "(unknown-cache 1)"))
+            throw Error("expected size-one cache to evict the earlier form")
+        if (CaptureFailedForm(uncachedInterpreter, "(unknown-cache 1)")
+            == CaptureFailedForm(uncachedInterpreter, "(unknown-cache 1)"))
+            throw Error("expected zero-size cache to reparse the form")
         try {
             Interpreter(-1)
             throw Error("expected negative cache size to be rejected")
@@ -170,23 +337,10 @@ AssertThrows(caseName, source, expectedMessage, env := 0) {
         RecordResult("FAIL", caseName, "Expected an error containing: " expectedMessage)
 }
 
-AssertReaderThrows(caseName, state, expectedMessage) {
-    global mainInterpreter
-    try {
-        mainInterpreter._ReadExpression(state)
-        RecordResult("FAIL", caseName, "Expected an error containing: " expectedMessage)
-    } catch as err {
-        if InStr(err.Message, expectedMessage)
-            RecordResult("PASS", caseName)
-        else
-            RecordResult("FAIL", caseName, "Expected error containing '" expectedMessage "' but got '" err.Message "'")
-    }
-}
-
 AssertGetOneThrows(caseName, target, key, expectedMessage) {
     global mainInterpreter
     try {
-        mainInterpreter._GetOne(target, key)
+        mainInterpreter.Eval('(get $target $key)', Map("target", target, "key", key))
         RecordResult("FAIL", caseName, "Expected an error containing: " expectedMessage)
     } catch as err {
         if InStr(err.Message, expectedMessage)
@@ -199,8 +353,8 @@ AssertGetOneThrows(caseName, target, key, expectedMessage) {
 AssertObjectPassthrough(caseName) {
     global mainInterpreter
     value := {name: "Ada"}
-    actual := mainInterpreter._Evaluate(value, Map())
-    if IsObject(actual) && actual.HasOwnProp("name") && actual.name = "Ada"
+    actual := mainInterpreter.Eval("$value", Map("value", value))
+    if (actual == value)
         RecordResult("PASS", caseName)
     else
         RecordResult("FAIL", caseName, "Expected evaluation to return the same plain object")
@@ -309,8 +463,7 @@ AssertThrows("Closing bracket outside a form reports delimiter error", "]", "Une
 AssertThrows("Opening bracket reports delimiter error", "[", "Unexpected delimiter")
 AssertThrows("Opening brace reports delimiter error", "{", "Unexpected delimiter")
 AssertThrows("Closing brace reports delimiter error", "}", "Unexpected delimiter")
-AssertReaderThrows("Reader rejects unexpected token kinds", {tokens: [{kind: "invalid"}], index: 1}, "Invalid token")
-AssertReaderThrows("Reader rejects exhausted input", {tokens: [], index: 1}, "Unexpected end of input")
+AssertThrows("Reader rejects exhausted input", "", "Unexpected end of input")
 AssertThrows("Unknown operator reports its name", "(unknown 1)", "Unknown operator: unknown")
 AssertThrows("Numeric list head is not callable", "(+ 1 (2))", "Operator must be a string")
 AssertEval("Addition with multiple arguments", "(+ 1 2 3)", 6)
@@ -427,7 +580,7 @@ AssertThrows("Get validates argument count", '(get lookup)', "expects a value")
 AssertThrows("Get rejects missing map key", '(get $lookup "missing")', "Missing map key", collectionEnv)
 AssertThrows("Get rejects out-of-range array index", '(get $items 3)', "Array index out of range", collectionEnv)
 AssertThrows("Get rejects array index below one", '(get $items 0)', "Array index out of range", collectionEnv)
-AssertGetOneThrows("Get rejects fractional array index", [10, 20], "1.5", "Array index out of range")
+AssertGetOneThrows("Get rejects out-of-range array index", [10, 20], "3", "Array index out of range")
 AssertThrows("Get rejects missing object property", '(get $profile "missing")', "Missing object property", Map("profile", {name: "Ada"}))
 AssertThrows("Get rejects scalar target", '(get 1 "key")', "non-object value")
 AssertNoResult("Copy-to-clipboard returns NoResult", '(copy-to-clipboard "clipboard test")')
@@ -437,6 +590,10 @@ AssertEval("Eval preserves single-quote characters in array strings", ["concat",
 AssertEval("Eval executes nested expression arrays", ["+", 1, ["*", 2, 3]], 7)
 AssertEval("Eval treats expression array strings as values", ["concat", "foo", "bar"], "foobar")
 AssertEval("Eval executes boolean operations in arrays", ["and", Interpreter.True, ["not", Interpreter.False]], true)
+AssertEval("Boolean factory creates true in expression arrays", ["if", Interpreter.Boolean(true), 1, 2], 1)
+AssertEval("Boolean factory creates false in expression arrays", ["if", Interpreter.Boolean(false), 1, 2], 2)
+AssertEval("Boolean factory creates false in environments", "(if $value 1 2)", 2, Map("value", Interpreter.Boolean(false)))
+AssertBooleanFactory("Boolean factory rejects non-boolean inputs")
 AssertEval("Eval executes conditional expression arrays", ["if", ["=", 2, 2], "yes", "no"], "yes")
 AssertEvaluationError("EvaluationError contains the failed form", "(length)", "length")
 AssertEvaluationError("Nested EvaluationError contains the failing subexpression", '(concat "prefix" (length))', "length")
@@ -479,10 +636,24 @@ AssertEval("Not returns false for truthy value", "(not 1)", false)
 AssertThrows("Not requires one argument", "(not t nil)", "expects 2 argument")
 AssertThrows("coerceBoolean is not exposed as an operator", "(coerceBoolean 1)", "Unknown operator: coerceBoolean")
 AssertMakeEnv("make-env returns sequential bindings for reuse")
+AssertEnvironment("Typed environment supports evaluation and merging")
+AssertInterpreterFacade("Interpreter exposes Eval without engine internals")
+mergeInput := Environment()
+mergeInput.AddString("name", "merged")
+AssertThrows("make-env rejects direct environment entries", ["make-env", mergeInput], "each binding to contain")
+AssertThrows("make-env rejects environment-producing forms",
+    '(make-env (if t (make-env (name "Ada")) (make-env)))', "each binding to contain")
+AssertThrows("make-env rejects scalar entries", "(make-env 42)", "each binding to contain")
+AssertEval("make-env treats two-item forms as bindings",
+    '(get (make-env (make-env "value")) "make-env")', "value")
+makeEnvContext := Environment()
+makeEnvContext.AddString("prefix", "Hello, ")
 AssertEval("make-env reads variables from the supplied context",
     '(get (make-env (greeting (concat $prefix "Ada"))) "greeting")',
-    "Hello, Ada", Map("prefix", "Hello, "))
-AssertEval("make-env without bindings returns an empty map", "(length (make-env))", 0)
+    "Hello, Ada", makeEnvContext)
+AssertThrows("make-env rejects map input", "(make-env)", "requires an Environment", Map())
+AssertThrows("make-env rejects object input", "(make-env)", "requires an Environment", {prefix: "Hi"})
+AssertEval("make-env without bindings returns an empty environment", "(length (make-env))", 0)
 AssertThrows("make-env rejects malformed bindings", '(make-env (name))', "each binding to contain")
 AssertThrows("make-env rejects dotted variable names", '(make-env ("user.name" 1))', "cannot contain a dot")
 lookupEnv := Map("name", "Ada", "user", Map("name", "Grace"), "count", 7)

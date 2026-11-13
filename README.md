@@ -2,18 +2,21 @@
 
 A small embeddable interpreter implemented in AutoHotkey v2. The main implementation is `Interpreter.ahk`.
 
-This interpreter is intended for reading and processing data supplied through its environment. Pass values such as arrays, maps, and objects into `Eval` through `env`, then use expressions to inspect or process them.
+This interpreter is intended for reading and processing data supplied through its environment.
 
 ```autohotkey
 #Requires AutoHotkey v2.0
 #Include Interpreter.ahk
 
 lisp := Interpreter()
-env := Map("user", Map("name", "Ada"), "items", [1, 2, 3])
+env := Environment()
+env.AddString("name", "Ada")
+env.AddNumber("count", 3)
+env.AddBoolean("enabled", true)
 
 lisp.Eval('(if (and t (> 5 2)) (concat "hello" " world") "no")') ; "hello world"
-lisp.Eval('(get $user "name")', env) ; "Ada"
-lisp.Eval('(contains $items 2)', env) ; true
+lisp.Eval('(if $enabled $name "guest")', env) ; "Ada"
+lisp.Eval('(+ $count 1)', env) ; 4
 
 lisp.Eval('(copy-to-clipboard "hello")') ; copies and returns a NoResult marker
 
@@ -29,9 +32,9 @@ lisp.Eval(["+", 1, ["*", 2, 3]]) ; 7, evaluates the array directly
 - Strings can use double quotes or backticks as delimiters. Backtick escapes in double-quoted strings support `` `n``, `` `r``, and `` `t``; doubled delimiters represent a literal delimiter inside either string form.
 - Atoms include numbers (including decimals and exponents), `t` (true), `nil` (false), strings, and symbols. Only atoms beginning with `$` are symbols; all other unquoted non-numeric atoms are string values. Use `""` for the empty string.
 - Numbers, strings, `t`, and `nil` are self-evaluating; `$`-prefixed symbols are looked up in the evaluation environment. Dotted symbols traverse nested maps or object properties (for example, `$user.name`).
-- `if` accepts any valid expression as its condition. Only `nil` is false; numbers (including `0`), strings (including `""`), and all other non-`nil` values are true. `and` and `or` short-circuit and return operand values, as in Lisp.
-- `Eval(sourceOrExpression, env)` accepts Lisp source text or a nested expression array, plus an optional `Map` of variable names to values. In expression arrays, each non-empty array is a form: its first string is the operator and subsequent strings are literal values; nested arrays are nested forms. A one-element string array is parsed as Lisp source, including when nested in another expression array. Native AutoHotkey arrays, maps, and objects can also be passed in the environment.
-- AutoHotkey represents `false` as numeric `0`, so use `Interpreter.False` in expression arrays or environments when you need an explicit Lisp `nil`; use `Interpreter.True` for an explicit Lisp `t`. `Eval` converts Lisp booleans back to native booleans in its final result.
+- `if` accepts any valid expression as its condition. `nil` and numeric `0` are false; strings (including `""`) are true. `and` and `or` short-circuit and return operand values.
+- `Eval(sourceOrExpression, env)` accepts Lisp source text or a nested expression array, plus an optional `Environment`. In expression arrays, each non-empty array is a form: its first string is the operator and subsequent strings are literal values; nested arrays are nested forms. A one-element string array is parsed as Lisp source, including when nested in another expression array. A `Map` or native object environment is also accepted for passing collections.
+- AutoHotkey represents `false` as numeric `0`, so use `env.AddBoolean` to preserve booleans in an `Environment`. For expression arrays or native environments, use `Interpreter.Boolean(false)` for explicit Lisp `nil` and `Interpreter.Boolean(true)` for Lisp `t`. `Interpreter.False` and `Interpreter.True` are also available. `Eval` converts Lisp booleans back to native booleans in its final result.
 - Interpreter failures throw `EvaluationError` (defined in `Interpreter.ahk`), which extends AutoHotkey's `Error`. For source-string input, errors with a known location include 1-based `position`, `sourceLine`, and `sourceColumn` properties; the message also includes line and column. The failing expression is exposed as `expr` when available.
 
 ## Operators
@@ -41,24 +44,43 @@ lisp.Eval(["+", 1, ["*", 2, 3]]) ; 7, evaluates the array directly
 | `(+ a b ...)`, `(- a b ...)`, `(* a b ...)`, `(/ a b ...)`, `(% a b)` | Numeric arithmetic; unary `-` negates. |
 | `(= a b)`, `(!= a b)`, `(< a b)`, `(<= a b)`, `(> a b)`, `(>= a b)` | Comparisons. `==` and `<>` are aliases for `=` and `!=`. |
 | `(and a b ...)`, `(or a b ...)`, `(not a)` | Boolean operations; `and` and `or` short circuit and return operand values. `or` treats a missing variable as absent so a later operand can serve as its fallback. A missing variable with no later operand raises an error. |
-| `(if test then else)` | Conditional expression. Any expression is valid as the test; only `nil` is false. Only the selected branch is evaluated. |
-| `(make-env (name value) ...)` | Evaluates each value in order, making earlier bindings and the input environment available to later values. Returns a `Map` containing only the declared variables. |
+| `(if test then else)` | Conditional expression. Any expression is valid as the test; `nil` and numeric `0` are false. Only the selected branch is evaluated. |
+| `(make-env (name value) ...)` | Evaluates bindings in order. Returns an `Environment` containing the declared variables; values must be booleans, numbers, or strings. |
 | `(concat a b ...)` | Concatenates values as strings. |
 | `(join separator value ...)` | Joins values as strings using the required string separator. With no values, returns an empty string. |
 | `(copy-to-clipboard value)` | Copies a value to the Windows clipboard and returns a `NoResult` marker instead of a printable value. |
 | `(match text regex)` | True when the regular expression matches the text (`RegExMatch`). |
 | `(strip-prefix text prefix)`, `(strip-suffix text suffix)` | Removes a matching prefix or suffix; otherwise returns the original string. |
-| `(length value)` | String length, array length, or map entry count. |
+| `(length value)` | String length, array length, or map or environment entry count. |
 | `(substr text start [length])` | Returns a substring using AutoHotkey's 1-based `SubStr` indexing; negative positions count from the end. |
 | `(upper text)`, `(lower text)` | Converts a string to uppercase or lowercase. |
 | `(trim text [omit-characters])` | Trims the specified characters from both ends. By default, trims spaces, tabs, carriage returns, and line feeds. |
 | `(replace text search replacement)` | Replaces all case-sensitive occurrences of a non-empty search string. |
 | `(starts-with text prefix)`, `(ends-with text suffix)` | Case-sensitive prefix/suffix checks. An empty prefix or suffix matches. |
 | `(index-of text search)` | Returns the 1-based position of the first case-sensitive match, or `0` when not found. |
-| `(get value key-or-path)` | Retrieves a map key, native object property, or 1-based array index. Dot-separated paths traverse nested values. Missing values raise an error. |
-| `(contains array value)` / `(in array value)` | Tests array membership. Also supports map-key and substring checks. |
+| `(get value key-or-path)` | Retrieves an environment or map key, native object property, or 1-based array index. Dot-separated paths traverse nested values. Missing values raise an error. |
+| `(contains array value)` / `(in array value)` | Tests array membership. Also supports environment keys, map keys, and substring checks. |
 
-An environment can be used to pass native AutoHotkey values:
+Use an `Environment` to add typed variables and merge another environment:
+
+```autohotkey
+env := Environment()
+env.AddString("name", "Ada")
+env.AddNumber("count", 0)
+env.AddBoolean("enabled", false)
+
+other := Environment()
+other.AddString("name", "Grace")
+env.AddEnvironment(other) ; incoming names replace existing names
+```
+
+`AddBoolean` accepts AHK `true` or `false` (integers `1` and `0`); `AddNumber` accepts integers and floats, and `AddString` accepts strings. Names must be non-empty strings without dots, whitespace, delimiters, or quotes. `AddEnvironment` copies bindings and returns the destination; later changes to the source do not replace values in the destination. `Get(name)` returns the stored value, including tagged booleans, and throws `EvaluationError` if the name is missing. The backing map is held in closures and is not exposed.
+
+Environments also support AutoHotkey's `for name, value in env` iteration protocol, which is used for merging and evaluation. Iteration exposes bindings, not the backing map.
+
+`Environment()` starts empty. Both typed setters and `make-env` restrict values to booleans, numbers, and strings; `make-env` raises an `EvaluationError` for other values. `make-env` requires an `Environment` as its input context, even though other expressions can use native maps or objects.
+
+A native environment can also be used to pass collections:
 
 ```autohotkey
 env := Map("user", Map("name", "Ada"), "items", ["tea", "coffee"])
@@ -68,14 +90,16 @@ lisp.Eval('(or $user.name "guest")', env)
 lisp.Eval('(contains $items "tea")', env)
 ```
 
-Use `make-env` to compute context once and pass its returned map to later calls:
+Use `make-env` to compute an environment once and pass it to later calls or merge it into an existing environment:
 
 ```autohotkey
 context := lisp.Eval('(make-env (name "Ada") (greeting (concat "Hello, " $name)))')
 lisp.Eval('(concat $greeting "!")', context) ; "Hello, Ada!"
+env := Environment()
+env.AddEnvironment(context)
 ```
 
-Bindings are evaluated sequentially, so each value can reference earlier names. When an input environment is supplied, its map entries or object properties are visible while computing the bindings, but are not copied into the returned map.
+Bindings are evaluated sequentially, so each value can reference earlier names. When an input environment is supplied, its values are visible while computing the bindings, but are not copied into the returned environment or changed by `make-env`.
 
 Use `or` to look up an environment variable or nested path and optionally supply a fallback. The fallback is one expression:
 
@@ -89,7 +113,7 @@ Without a fallback, a missing variable raises an error. In a larger expression, 
 
 ## Implementation
 
-`Eval` is the interpreter's public evaluation entry point. Parsing, evaluation, and builtin helpers use a leading underscore to mark them as internal implementation methods. Special forms (`if`, `and`, `or`, and `not`) are handled directly so they can control evaluation; other operators are dispatched through the interpreter's builtin registry. Interpreter failures use `EvaluationError`, with the failed expression available in its `expr` property when evaluation has begun.
+`Eval` is the only evaluation method exposed by an `Interpreter` instance. Its parser, evaluator, cache, and builtin registry are held in closures rather than a separately constructible engine class. Special forms (`if`, `and`, `or`, and `not`) control evaluation directly; other operators are dispatched through the builtin registry. Interpreter failures use `EvaluationError`, with the failed expression available in its `expr` property when evaluation has begun.
 
 `copy-to-clipboard` returns an instance of `NoResult`, allowing callers to distinguish a side-effect-only result from ordinary values such as `false` (the interpreter's `nil`). Check with `result is NoResult` when deciding whether to display an evaluation result.
 

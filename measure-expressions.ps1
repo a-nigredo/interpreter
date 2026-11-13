@@ -65,10 +65,10 @@ try {
     iterations := __ITERATIONS__
     rounds := __ROUNDS__
     lisp := Interpreter()
-    environment := lisp._CreateEnvironment()
+    evalEnv := Environment()
 
     Loop rounds
-        _Measure(expression, A_Index, iterations, lisp, environment, resultsPath)
+        _Measure(expression, A_Index, iterations, lisp, evalEnv, resultsPath)
 } catch as err {
     FileAppend("ERROR|" err.Message "`n", resultsPath, "UTF-8")
     ExitApp(1)
