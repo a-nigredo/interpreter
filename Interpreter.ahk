@@ -117,6 +117,46 @@ class Environment {
 }
 
 class Interpreter {
+    static _TrueLiteral := "t"
+    static _NilLiteral := "nil"
+    static _OperatorAdd := "+"
+    static _OperatorSubtract := "-"
+    static _OperatorMultiply := "*"
+    static _OperatorDivide := "/"
+    static _OperatorModulo := "%"
+    static _OperatorEqual := "="
+    static _OperatorEqualAlias := "=="
+    static _OperatorNotEqual := "!="
+    static _OperatorNotEqualAlias := "<>"
+    static _OperatorLessThan := "<"
+    static _OperatorLessThanOrEqual := "<="
+    static _OperatorGreaterThan := ">"
+    static _OperatorGreaterThanOrEqual := ">="
+    static _OperatorConcat := "concat"
+    static _OperatorJoin := "join"
+    static _OperatorCopyToClipboard := "copy-to-clipboard"
+    static _OperatorLength := "length"
+    static _OperatorMatch := "match"
+    static _OperatorSubstr := "substr"
+    static _OperatorUpper := "upper"
+    static _OperatorLower := "lower"
+    static _OperatorTrim := "trim"
+    static _OperatorReplace := "replace"
+    static _OperatorStartsWith := "starts-with"
+    static _OperatorEndsWith := "ends-with"
+    static _OperatorIndexOf := "index-of"
+    static _OperatorStripPrefix := "strip-prefix"
+    static _OperatorStripSuffix := "strip-suffix"
+    static _OperatorContains := "contains"
+    static _OperatorIn := "in"
+    static _FormIf := "if"
+    static _FormWhen := "when"
+    static _FormAnd := "and"
+    static _FormOr := "or"
+    static _FormNot := "not"
+    static _OperatorGet := "get"
+    static _OperatorMakeEnv := "make-env"
+
     static True := _LispBoolean(true)
     static False := _LispBoolean(false)
     static Boolean(value) {
@@ -132,36 +172,36 @@ class Interpreter {
         ; implementation, and adding a builtin does not require extending Apply's
         ; dispatch logic.
         builtins := Map(
-            "+", _BuiltinAdd,
-            "-", _BuiltinSubtract,
-            "*", _BuiltinMultiply,
-            "/", _BuiltinDivide,
-            "%", _BuiltinModulo,
-            "=", _BuiltinEqual,
-            "==", _BuiltinEqual,
-            "!=", _BuiltinNotEqual,
-            "<>", _BuiltinNotEqual,
-            "<", _BuiltinLessThan,
-            "<=", _BuiltinLessThanOrEqual,
-            ">", _BuiltinGreaterThan,
-            ">=", _BuiltinGreaterThanOrEqual,
-            "concat", _BuiltinConcat,
-            "join", _BuiltinJoin,
-            "copy-to-clipboard", _BuiltinCopyToClipboard,
-            "length", _BuiltinLength,
-            "match", _BuiltinMatch,
-            "substr", _BuiltinSubstr,
-            "upper", _BuiltinUpper,
-            "lower", _BuiltinLower,
-            "trim", _BuiltinTrim,
-            "replace", _BuiltinReplace,
-            "starts-with", _BuiltinStartsWith,
-            "ends-with", _BuiltinEndsWith,
-            "index-of", _BuiltinIndexOf,
-            "strip-prefix", _BuiltinStripPrefix,
-            "strip-suffix", _BuiltinStripSuffix,
-            "contains", _BuiltinContains,
-            "in", _BuiltinContains
+            Interpreter._OperatorAdd, _BuiltinAdd,
+            Interpreter._OperatorSubtract, _BuiltinSubtract,
+            Interpreter._OperatorMultiply, _BuiltinMultiply,
+            Interpreter._OperatorDivide, _BuiltinDivide,
+            Interpreter._OperatorModulo, _BuiltinModulo,
+            Interpreter._OperatorEqual, _BuiltinEqual,
+            Interpreter._OperatorEqualAlias, _BuiltinEqual,
+            Interpreter._OperatorNotEqual, _BuiltinNotEqual,
+            Interpreter._OperatorNotEqualAlias, _BuiltinNotEqual,
+            Interpreter._OperatorLessThan, _BuiltinLessThan,
+            Interpreter._OperatorLessThanOrEqual, _BuiltinLessThanOrEqual,
+            Interpreter._OperatorGreaterThan, _BuiltinGreaterThan,
+            Interpreter._OperatorGreaterThanOrEqual, _BuiltinGreaterThanOrEqual,
+            Interpreter._OperatorConcat, _BuiltinConcat,
+            Interpreter._OperatorJoin, _BuiltinJoin,
+            Interpreter._OperatorCopyToClipboard, _BuiltinCopyToClipboard,
+            Interpreter._OperatorLength, _BuiltinLength,
+            Interpreter._OperatorMatch, _BuiltinMatch,
+            Interpreter._OperatorSubstr, _BuiltinSubstr,
+            Interpreter._OperatorUpper, _BuiltinUpper,
+            Interpreter._OperatorLower, _BuiltinLower,
+            Interpreter._OperatorTrim, _BuiltinTrim,
+            Interpreter._OperatorReplace, _BuiltinReplace,
+            Interpreter._OperatorStartsWith, _BuiltinStartsWith,
+            Interpreter._OperatorEndsWith, _BuiltinEndsWith,
+            Interpreter._OperatorIndexOf, _BuiltinIndexOf,
+            Interpreter._OperatorStripPrefix, _BuiltinStripPrefix,
+            Interpreter._OperatorStripSuffix, _BuiltinStripSuffix,
+            Interpreter._OperatorContains, _BuiltinContains,
+            Interpreter._OperatorIn, _BuiltinContains
         )
 
         if !IsNumber(cacheSize) || cacheSize < 0 || cacheSize != Floor(cacheSize)
@@ -280,10 +320,10 @@ class Interpreter {
                 }
                 return symbol
             }
-            if (text = "t")
-                return _LispBoolean(true)
-            if (text = "nil")
-                return _LispBoolean(false)
+            if (text = Interpreter._TrueLiteral)
+                return Interpreter.True
+            if (text = Interpreter._NilLiteral)
+                return Interpreter.False
             if RegExMatch(text, "^-?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?$")
                 return text + 0
             return text
@@ -351,7 +391,8 @@ class Interpreter {
                 if (_IsWhitespace(char) || _IsPunctuation(char) || char = Chr(34))
                     throw EvaluationError("Invalid operator or symbol: " value)
             }
-            if (value = "t" || value = "nil" || RegExMatch(value, "^-?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?$"))
+            if (value = Interpreter._TrueLiteral || value = Interpreter._NilLiteral
+                || RegExMatch(value, "^-?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?$"))
                 throw EvaluationError("An operator array element must be a symbol, not a number.")
         }
 
@@ -359,7 +400,8 @@ class Interpreter {
             tokens := _Tokenize(source)
             state := {tokens: tokens, index: 1, source: source}
             isScalar := tokens.Length > 0 && (tokens[1].kind = "string"
-                || (tokens[1].kind = "atom" && (tokens[1].value = "t" || tokens[1].value = "nil"
+                || (tokens[1].kind = "atom" && (tokens[1].value = Interpreter._TrueLiteral
+                    || tokens[1].value = Interpreter._NilLiteral
                     || RegExMatch(tokens[1].value, "^-?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?$"))))
             if (tokens.Length > 1 && !isScalar && !_IsOpeningParenthesis(tokens[1])) {
                 items := []
@@ -445,12 +487,25 @@ class Interpreter {
                 op := head.symbol
             else
                 op := _Evaluate(head, env)
-            if (op = "if") {
-                _RequireCount(items, 4, "if")
+            if (op = Interpreter._FormIf) {
+                _RequireCount(items, 4, Interpreter._FormIf)
                 condition := _CoerceBoolean(_Evaluate(items[2], env))
                 return _Truthy(condition) ? _Evaluate(items[3], env) : _Evaluate(items[4], env)
             }
-            if (op = "and") {
+            if (op = Interpreter._FormWhen) {
+                _RequireAtLeast(items, 2, Interpreter._FormWhen)
+                condition := _CoerceBoolean(_Evaluate(items[2], env))
+                result := _LispBoolean(false)
+                if !_Truthy(condition)
+                    return result
+                index := 3
+                while (index <= items.Length) {
+                    result := _Evaluate(items[index], env)
+                    index += 1
+                }
+                return result
+            }
+            if (op = Interpreter._FormAnd) {
                 result := _LispBoolean(true)
                 for index, item in items {
                     if (index = 1)
@@ -461,7 +516,7 @@ class Interpreter {
                 }
                 return result
             }
-            if (op = "or") {
+            if (op = Interpreter._FormOr) {
                 result := _LispBoolean(false)
                 for index, item in items {
                     if (index = 1)
@@ -486,19 +541,19 @@ class Interpreter {
                 }
                 return result
             }
-            if (op = "not") {
-                _RequireCount(items, 2, "not")
+            if (op = Interpreter._FormNot) {
+                _RequireCount(items, 2, Interpreter._FormNot)
                 condition := _CoerceBoolean(_Evaluate(items[2], env))
                 return _LispBoolean(!_Truthy(condition))
             }
-            if (op = "get") {
+            if (op = Interpreter._OperatorGet) {
                 if (items.Length != 3)
                     throw EvaluationError(op " expects a value, a key/path")
                 target := _Evaluate(items[2], env)
                 path := _Evaluate(items[3], env)
                 return _GetPath(target, path)
             }
-            if (op = "make-env")
+            if (op = Interpreter._OperatorMakeEnv)
                 return _EvaluateMakeEnv(items, env)
             args := []
             index := 2
@@ -516,7 +571,7 @@ class Interpreter {
             while (index <= items.Length) {
                 binding := items[index]
                 if !(binding is SyntaxForm) || binding.items.Length != 2
-                    throw EvaluationError("make-env" " expects each binding to contain a name and one value expression")
+                    throw EvaluationError(Interpreter._OperatorMakeEnv " expects each binding to contain a name and one value expression")
 
                 nameExpr := binding.items[1]
                 if _IsSymbol(nameExpr)
@@ -524,13 +579,13 @@ class Interpreter {
                 else if (nameExpr is String)
                     name := nameExpr
                 else
-                    throw EvaluationError("make-env" " binding name must be a string or symbol")
+                    throw EvaluationError(Interpreter._OperatorMakeEnv " binding name must be a string or symbol")
 
                 if (name = "" || InStr(name, "."))
-                    throw EvaluationError("make-env" " binding name must be non-empty and cannot contain a dot")
+                    throw EvaluationError(Interpreter._OperatorMakeEnv " binding name must be non-empty and cannot contain a dot")
                 for char in StrSplit(name) {
                     if (_IsWhitespace(char) || _IsPunctuation(char) || char = Chr(34))
-                        throw EvaluationError("make-env" " binding name is invalid: " name)
+                        throw EvaluationError(Interpreter._OperatorMakeEnv " binding name is invalid: " name)
                 }
 
                 value := _Evaluate(binding.items[2], scope)
@@ -543,7 +598,7 @@ class Interpreter {
 
         _CopyEnvironment(env) {
             if !(env is Environment)
-                throw EvaluationError("make-env requires an Environment")
+                throw EvaluationError(Interpreter._OperatorMakeEnv " requires an Environment")
             return Environment().AddEnvironment(env)
         }
 
@@ -555,7 +610,7 @@ class Interpreter {
             else if (value is String)
                 env.AddString(name, value)
             else
-                throw EvaluationError("make-env" " binding value must be a boolean, number, or string")
+                throw EvaluationError(Interpreter._OperatorMakeEnv " binding value must be a boolean, number, or string")
         }
 
         _Apply(op, args) {
@@ -567,7 +622,7 @@ class Interpreter {
         }
 
         _BuiltinAdd(args) {
-            _RequireAtLeast(args, 1, "+")
+            _RequireAtLeast(args, 1, Interpreter._OperatorAdd)
             value := 0
             for item in args
                 value += _Number(item)
@@ -575,7 +630,7 @@ class Interpreter {
         }
 
         _BuiltinSubtract(args) {
-            _RequireAtLeast(args, 1, "-")
+            _RequireAtLeast(args, 1, Interpreter._OperatorSubtract)
             value := _Number(args[1])
             if (args.Length = 1)
                 return -value
@@ -588,7 +643,7 @@ class Interpreter {
         }
 
         _BuiltinMultiply(args) {
-            _RequireAtLeast(args, 1, "*")
+            _RequireAtLeast(args, 1, Interpreter._OperatorMultiply)
             value := 1
             for item in args
                 value *= _Number(item)
@@ -596,7 +651,7 @@ class Interpreter {
         }
 
         _BuiltinDivide(args) {
-            _RequireAtLeast(args, 2, "/")
+            _RequireAtLeast(args, 2, Interpreter._OperatorDivide)
             value := _Number(args[1])
             index := 2
             while (index <= args.Length) {
@@ -610,37 +665,37 @@ class Interpreter {
         }
 
         _BuiltinModulo(args) {
-            _RequireCount(args, 2, "%")
+            _RequireCount(args, 2, Interpreter._OperatorModulo)
             return Mod(_Number(args[1]), _Number(args[2]))
         }
 
         _BuiltinEqual(args) {
-            _RequireCount(args, 2, "=")
+            _RequireCount(args, 2, Interpreter._OperatorEqual)
             return _LispBoolean(_UnwrapBoolean(args[1]) = _UnwrapBoolean(args[2]))
         }
 
         _BuiltinNotEqual(args) {
-            _RequireCount(args, 2, "!=")
+            _RequireCount(args, 2, Interpreter._OperatorNotEqual)
             return _LispBoolean(_UnwrapBoolean(args[1]) != _UnwrapBoolean(args[2]))
         }
 
         _BuiltinLessThan(args) {
-            _RequireCount(args, 2, "<")
+            _RequireCount(args, 2, Interpreter._OperatorLessThan)
             return _LispBoolean(args[1] < args[2])
         }
 
         _BuiltinLessThanOrEqual(args) {
-            _RequireCount(args, 2, "<=")
+            _RequireCount(args, 2, Interpreter._OperatorLessThanOrEqual)
             return _LispBoolean(args[1] <= args[2])
         }
 
         _BuiltinGreaterThan(args) {
-            _RequireCount(args, 2, ">")
+            _RequireCount(args, 2, Interpreter._OperatorGreaterThan)
             return _LispBoolean(args[1] > args[2])
         }
 
         _BuiltinGreaterThanOrEqual(args) {
-            _RequireCount(args, 2, ">=")
+            _RequireCount(args, 2, Interpreter._OperatorGreaterThanOrEqual)
             return _LispBoolean(args[1] >= args[2])
         }
 
@@ -652,10 +707,10 @@ class Interpreter {
         }
 
         _BuiltinJoin(args) {
-            _RequireAtLeast(args, 1, "join")
+            _RequireAtLeast(args, 1, Interpreter._OperatorJoin)
             separator := args[1]
             if !(separator is String)
-                throw EvaluationError("join" " expects a string separator")
+                throw EvaluationError(Interpreter._OperatorJoin " expects a string separator")
             value := ""
             index := 2
             while (index <= args.Length) {
@@ -668,14 +723,14 @@ class Interpreter {
         }
 
         _BuiltinCopyToClipboard(args) {
-            _RequireCount(args, 1, "copy-to-clipboard")
+            _RequireCount(args, 1, Interpreter._OperatorCopyToClipboard)
             value := args[1]
             A_Clipboard := value
             return NoResult()
         }
 
         _BuiltinLength(args) {
-            _RequireCount(args, 1, "length")
+            _RequireCount(args, 1, Interpreter._OperatorLength)
             if (args[1] is Environment) {
                 count := 0
                 for name in args[1]
@@ -690,84 +745,84 @@ class Interpreter {
         }
 
         _BuiltinMatch(args) {
-            _RequireCount(args, 2, "match")
+            _RequireCount(args, 2, Interpreter._OperatorMatch)
             return _LispBoolean(RegExMatch(args[1], args[2]) != 0)
         }
 
         _BuiltinSubstr(args) {
             if (args.Length < 2 || args.Length > 3)
-                throw EvaluationError("substr" " expects 2 or 3 arguments")
-            text := _RequireString(args[1], "substr", "text")
-            start := _RequireInteger(args[2], "substr", "start")
+                throw EvaluationError(Interpreter._OperatorSubstr " expects 2 or 3 arguments")
+            text := _RequireString(args[1], Interpreter._OperatorSubstr, "text")
+            start := _RequireInteger(args[2], Interpreter._OperatorSubstr, "start")
             if (args.Length = 2)
                 return SubStr(text, start)
-            length := _RequireInteger(args[3], "substr", "length")
+            length := _RequireInteger(args[3], Interpreter._OperatorSubstr, "length")
             return SubStr(text, start, length)
         }
 
         _BuiltinUpper(args) {
-            _RequireCount(args, 1, "upper")
-            return StrUpper(_RequireString(args[1], "upper", "text"))
+            _RequireCount(args, 1, Interpreter._OperatorUpper)
+            return StrUpper(_RequireString(args[1], Interpreter._OperatorUpper, "text"))
         }
 
         _BuiltinLower(args) {
-            _RequireCount(args, 1, "lower")
-            return StrLower(_RequireString(args[1], "lower", "text"))
+            _RequireCount(args, 1, Interpreter._OperatorLower)
+            return StrLower(_RequireString(args[1], Interpreter._OperatorLower, "text"))
         }
 
         _BuiltinTrim(args) {
             if (args.Length < 1 || args.Length > 2)
-                throw EvaluationError("trim" " expects 1 or 2 arguments")
-            text := _RequireString(args[1], "trim", "text")
-            omitChars := args.Length = 2 ? _RequireString(args[2], "trim", "omit characters") : " `t`r`n"
+                throw EvaluationError(Interpreter._OperatorTrim " expects 1 or 2 arguments")
+            text := _RequireString(args[1], Interpreter._OperatorTrim, "text")
+            omitChars := args.Length = 2 ? _RequireString(args[2], Interpreter._OperatorTrim, "omit characters") : " `t`r`n"
             return Trim(text, omitChars)
         }
 
         _BuiltinReplace(args) {
-            _RequireCount(args, 3, "replace")
-            text := _RequireString(args[1], "replace", "text")
-            search := _RequireString(args[2], "replace", "search text")
-            replacement := _RequireString(args[3], "replace", "replacement")
+            _RequireCount(args, 3, Interpreter._OperatorReplace)
+            text := _RequireString(args[1], Interpreter._OperatorReplace, "text")
+            search := _RequireString(args[2], Interpreter._OperatorReplace, "search text")
+            replacement := _RequireString(args[3], Interpreter._OperatorReplace, "replacement")
             if (search = "")
-                throw EvaluationError("replace" " expects non-empty search text")
+                throw EvaluationError(Interpreter._OperatorReplace " expects non-empty search text")
             return StrReplace(text, search, replacement, true)
         }
 
         _BuiltinStartsWith(args) {
-            _RequireCount(args, 2, "starts-with")
-            text := _RequireString(args[1], "starts-with", "text")
-            prefix := _RequireString(args[2], "starts-with", "prefix")
+            _RequireCount(args, 2, Interpreter._OperatorStartsWith)
+            text := _RequireString(args[1], Interpreter._OperatorStartsWith, "text")
+            prefix := _RequireString(args[2], Interpreter._OperatorStartsWith, "prefix")
             return _LispBoolean(SubStr(text, 1, StrLen(prefix)) == prefix)
         }
 
         _BuiltinEndsWith(args) {
-            _RequireCount(args, 2, "ends-with")
-            text := _RequireString(args[1], "ends-with", "text")
-            suffix := _RequireString(args[2], "ends-with", "suffix")
+            _RequireCount(args, 2, Interpreter._OperatorEndsWith)
+            text := _RequireString(args[1], Interpreter._OperatorEndsWith, "text")
+            suffix := _RequireString(args[2], Interpreter._OperatorEndsWith, "suffix")
             return _LispBoolean(suffix == "" || SubStr(text, -StrLen(suffix)) == suffix)
         }
 
         _BuiltinIndexOf(args) {
-            _RequireCount(args, 2, "index-of")
-            text := _RequireString(args[1], "index-of", "text")
-            search := _RequireString(args[2], "index-of", "search text")
+            _RequireCount(args, 2, Interpreter._OperatorIndexOf)
+            text := _RequireString(args[1], Interpreter._OperatorIndexOf, "text")
+            search := _RequireString(args[2], Interpreter._OperatorIndexOf, "search text")
             return InStr(text, search, true)
         }
 
         _BuiltinStripPrefix(args) {
-            _RequireCount(args, 2, "strip-prefix")
+            _RequireCount(args, 2, Interpreter._OperatorStripPrefix)
             text := args[1], prefix := args[2]
             return (SubStr(text, 1, StrLen(prefix)) = prefix) ? SubStr(text, StrLen(prefix) + 1) : text
         }
 
         _BuiltinStripSuffix(args) {
-            _RequireCount(args, 2, "strip-suffix")
+            _RequireCount(args, 2, Interpreter._OperatorStripSuffix)
             text := args[1], suffix := args[2]
             return (suffix != "" && SubStr(text, -StrLen(suffix)) = suffix) ? SubStr(text, 1, StrLen(text) - StrLen(suffix)) : text
         }
 
         _BuiltinContains(args) {
-            _RequireCount(args, 2, "contains")
+            _RequireCount(args, 2, Interpreter._OperatorContains)
             return _LispBoolean(_Contains(args[1], args[2]))
         }
 
