@@ -72,6 +72,8 @@ AssertMakeEnv(caseName) {
             throw Error("expected returned variables to be usable in a later Eval call")
         if (mainInterpreter.Eval('(contains $env "name")', Map("env", initialEnv)))
             throw Error("expected the original environment to remain unchanged")
+        if (mainInterpreter.Eval('(contains $env "prefix")', Map("env", variables)))
+            throw Error("expected input bindings not to be copied into the returned environment")
 
         nested := mainInterpreter.Eval('(make-env (name (get (make-env (value "nested")) "value")))')
         if (nested.Get("name") != "nested")
@@ -108,6 +110,12 @@ AssertEnvironment(caseName) {
         }
         if (env.Get("name") != "Ada")
             throw Error("expected Get to return the value for a name")
+        enumerated := Map()
+        for name, value in env
+            enumerated[name] := value
+        if (enumerated.Count != 5 || enumerated["name"] != "Ada"
+            || !(enumerated["enabled"] is _LispBoolean))
+            throw Error("expected iteration to expose all bindings with their stored types")
         noNameRejected := false
         try env.Get()
         catch Error
@@ -421,6 +429,10 @@ AssertEvaluationPosition(caseName, source, expectedPosition, expectedLine, expec
                 ", column " (err.HasOwnProp("sourceColumn") ? err.sourceColumn : "none"))
             return
         }
+        if !InStr(err.Message, "line " expectedLine) || !InStr(err.Message, "column " expectedColumn) {
+            RecordResult("FAIL", caseName, "Expected source line and column in error message")
+            return
+        }
         RecordResult("PASS", caseName)
     }
 }
@@ -495,9 +507,11 @@ AssertEvaluationCause("EvaluationError preserves a native exception cause", '(ma
 AssertEval("Equality operator", "(= 2 2)", true)
 AssertEval("Equality operator unequal values", "(= 2 3)", false)
 AssertEval("Equality alias", "(== 2 2)", true)
+AssertEval("Equality alias returns false for unequal values", "(== 2 3)", false)
 AssertEval("Inequality operator", "(!= 2 3)", true)
 AssertEval("Inequality operator equal values", "(!= 2 2)", false)
 AssertEval("Inequality alias", "(<> 2 3)", true)
+AssertEval("Inequality alias returns false for equal values", "(<> 2 2)", false)
 AssertEval("Less-than comparison", "(< 1 2)", true)
 AssertEval("Less-than false result", "(< 2 1)", false)
 AssertEval("Less-than-or-equal comparison", "(<= 2 2)", true)
@@ -510,11 +524,14 @@ AssertEval("Greater-than-or-equal above", "(>= 3 2)", true)
 AssertEval("Greater-than-or-equal false result", "(>= 1 2)", false)
 AssertThrows("Comparison validates argument count", "(= 1)", "expects 2 argument")
 AssertThrows("Not-equal validates argument count", "(!= 1)", "expects 2 argument")
+AssertThrows("Equality alias validates argument count", "(== 1)", "expects 2 argument")
+AssertThrows("Inequality alias validates argument count", "(<> 1)", "expects 2 argument")
 AssertThrows("Less-than validates argument count", "(< 1)", "expects 2 argument")
 AssertThrows("Less-than-or-equal validates argument count", "(<= 1)", "expects 2 argument")
 AssertThrows("Greater-than validates argument count", "(> 1)", "expects 2 argument")
 AssertThrows("Greater-than-or-equal validates argument count", "(>= 1)", "expects 2 argument")
 AssertThrows("Computed operator head is evaluated", '((if t "unknown" "unknown") 1)', "Unknown operator: unknown")
+AssertEval("Computed operator can select a registered operator", '((if t "+" "*") 2 3)', 5)
 
 ; String and collection builtins.
 collectionEnv := Map("items", [10, 20], "numbers", [1, 2, 3], "lookup", Map("a", 1, "b", 2))
@@ -543,7 +560,9 @@ AssertEval("Replace all exact matches", '(replace "one ONE one" "one" "two")', "
 AssertThrows("Replace rejects an empty search string", '(replace "hello" "" "x")', "non-empty search")
 AssertEval("Starts-with exact prefix", '(starts-with "hello" "he")', true)
 AssertEval("Starts-with is case-sensitive", '(starts-with "hello" "He")', false)
+AssertEval("Empty prefix matches", '(starts-with "hello" "")', true)
 AssertEval("Ends-with exact suffix", '(ends-with "hello" "lo")', true)
+AssertEval("Ends-with is case-sensitive", '(ends-with "hello" "LO")', false)
 AssertEval("Empty suffix matches", '(ends-with "hello" "")', true)
 AssertEval("Index-of returns one-based position", '(index-of "hello" "ll")', 3)
 AssertEval("Index-of is case-sensitive", '(index-of "hello" "LL")', 0)
@@ -555,6 +574,9 @@ AssertEval("Array contains value from environment", "(contains $numbers 2)", tru
 AssertEval("Map contains key from environment", '(contains $lookup "a")', true, collectionEnv)
 AssertEval("String contains substring", '(contains "hello" "ell")', true)
 AssertEval("Membership alias on environment value", "(in $numbers 3)", true, collectionEnv)
+AssertEval("Membership alias supports map keys", '(in $lookup "a")', true, collectionEnv)
+AssertEval("Membership alias supports substrings", '(in "hello" "xyz")', false)
+AssertEval("Membership alias supports Environment keys", '(in (make-env (name "Ada")) "name")', true)
 AssertThrows("Contains rejects unsupported values", "(contains 42 1)", "contains expects")
 AssertEval("Array does not contain value", "(contains $numbers 99)", false, collectionEnv)
 AssertEval("Map does not contain key", '(contains $lookup "missing")', false, collectionEnv)
@@ -576,6 +598,9 @@ AssertEval("Get array index", '(get $items 2)', 20, collectionEnv)
 AssertEval("Get nested map path", '(get $record "user.profile.name")', "Ada", Map("record", Map("user", Map("profile", Map("name", "Ada")))))
 AssertEval("Get native object property", '(get $profile "name")', "Ada", Map("profile", {name: "Ada"}))
 AssertEval("Get nested object property", '(get $profile "user.name")', "Grace", Map("profile", {user: {name: "Grace"}}))
+AssertEval("Get traverses mixed map object and array paths", '(get $data "user.items.2")', "coffee",
+    Map("data", Map("user", {items: ["tea", "coffee"]})))
+AssertThrows("Get rejects missing Environment key", '(get (make-env) "missing")', "Variable is not present: missing")
 AssertThrows("Get validates argument count", '(get lookup)', "expects a value")
 AssertThrows("Get rejects missing map key", '(get $lookup "missing")', "Missing map key", collectionEnv)
 AssertThrows("Get rejects out-of-range array index", '(get $items 3)', "Array index out of range", collectionEnv)
@@ -601,6 +626,8 @@ AssertEvaluationError("Nested EvaluationError contains the failing subexpression
 ; Variable lookups and fallbacks.
 AssertEval("If selects true branch", "(if t 1 2)", 1)
 AssertEval("If selects false branch", "(if nil 1 2)", 2)
+AssertEval("If skips the unselected else branch", "(if t 7 (/ 1 0))", 7)
+AssertEval("If skips the unselected then branch", "(if nil (/ 1 0) 8)", 8)
 AssertEval("If accepts a true comparison condition", "(if (= 2 2) 1 2)", 1)
 AssertEval("If accepts a false comparison condition", "(if (= 2 3) 1 2)", 2)
 AssertEval("If accepts an and condition", "(if (and t (> 3 2)) 1 2)", 1)
@@ -624,6 +651,8 @@ AssertThrows("If requires three arguments", "(if t 1)", "expects 4 argument")
 AssertEval("When evaluates its body when true", "(when t 42)", 42)
 AssertEval("When returns the last body result", "(when t 1 2 3)", 3)
 AssertEval("When skips its body when false", "(when nil missing)", false)
+AssertEval("When skips failing body expressions when false", "(when nil (/ 1 0))", false)
+AssertThrows("When evaluates earlier body expressions", "(when t (/ 1 0) 42)", "Division by zero")
 AssertEval("When without a body returns nil", "(when t)", false)
 AssertEval("When evaluates conditions in expression arrays", ["when", ["=", 2, 2], 1, 2], 2)
 AssertThrows("When requires a condition", "(when)", "expects at least 2 argument")
@@ -632,11 +661,15 @@ AssertEval("And returns the original last operand", "(and t 1)", 1)
 AssertEval("And returns the original false operand", "(and t 0)", 0)
 AssertEval("And preserves numeric operand values", "(+ (and t 1) 2)", 3)
 AssertEval("And short-circuits on false", "(and nil missing)", false)
+AssertEval("And skips failing operands after false", "(and 0 (/ 1 0))", 0)
+AssertThrows("And evaluates operands before a false value", "(and t (/ 1 0) nil)", "Division by zero")
 AssertEval("Or with no operands is false", "(or)", false)
 AssertEval("Or returns false when all operands are nil", "(or nil nil)", false)
 AssertEval("Or returns the original last false operand", "(or nil 0)", 0)
 AssertEval("Or preserves numeric operand values", "(+ (or nil 0) 1)", 1)
 AssertEval("Or returns its first truthy operand", '(or nil "value")', "value")
+AssertEval("Or skips failing operands after truthy value", '(or "value" (/ 1 0))', "value")
+AssertThrows("Or evaluates operands before a truthy value", '(or nil (/ 1 0) "value")', "Division by zero")
 AssertEval("Not returns true for false", "(not nil)", true)
 AssertEval("Not returns false for truthy value", "(not 1)", false)
 AssertThrows("Not requires one argument", "(not t nil)", "expects 2 argument")
@@ -668,6 +701,9 @@ AssertEval("or skips fallback for an existing variable", '(or $name "guest")', "
 AssertEval("or uses fallback for a missing variable", '(or $missing "guest")', "guest", lookupEnv)
 AssertThrows("or reports a missing variable without fallback", "(or $missing)", "Variable is not present: missing")
 AssertEval("or reads a nested map path", "(or $user.name)", "Grace", lookupEnv)
+AssertEval("or falls back for a missing nested map path", '(or $user.missing "guest")', "guest", lookupEnv)
+AssertEval("or falls back after multiple missing variables", '(or $missing $user.missing "guest")', "guest", lookupEnv)
+AssertThrows("or reports a final missing variable after a false value", "(or nil $missing)", "Variable is not present: missing")
 AssertEval("or reads deeper nested path", "(or $user.profile.name)", "Ada", Map("user", Map("profile", Map("name", "Ada"))))
 AssertEval("or falls through for nil", '(or nil "guest")', "guest", lookupEnv)
 AssertEval("or treats zero as false and uses fallback", '(or nil 0 "guest")', "guest", lookupEnv)
@@ -681,6 +717,7 @@ AssertEval("Path symbol traverses a nested object property", "$user.name", "Grac
 AssertEval("or reads a variable from an AHK object", "(or $name)", "Ada", objectLookupEnv)
 AssertEval("or reads a nested property from an AHK object", "(or $user.name)", "Grace", objectLookupEnv)
 AssertEval("or uses fallback for a missing AHK object property", '(or $missing "guest")', "guest", objectLookupEnv)
+AssertEval("or uses fallback for a missing nested object property", '(or $user.missing "guest")', "guest", objectLookupEnv)
 AssertEvalCache("Parsed expression cache reuses syntax but reevaluates environment")
 AssertCacheConfiguration("Cache size defaults to 256 and is configurable")
 

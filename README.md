@@ -27,7 +27,7 @@ lisp.Eval(["+", 1, ["*", 2, 3]]) ; 7, evaluates the array directly
 
 - Forms use Lisp syntax with parentheses: `(+ 1 2)`.
 - A form's evaluated operator must be a string naming a registered operator; a number or other value in operator position is not callable.
-- Source syntax does not construct arrays or maps. Pass collections through the environment and read them with `get`, `length`, `contains`, or `in`.
+<font color="red">**Important:** Source syntax does not construct arrays or maps. Pass collections through the environment and read them with `get`, `length`, `contains`, or `in`.</font>
 - Each interpreter caches parsed forms for up to 256 distinct source expressions by default. Configure the limit with the constructor argument, such as `Interpreter(64)`; `0` disables caching. Repeated calls reuse parsed syntax but always reevaluate against the current environment.
 - Strings can use double quotes or backticks as delimiters. Backtick escapes in double-quoted strings support `` `n``, `` `r``, and `` `t``; doubled delimiters represent a literal delimiter inside either string form.
 - Atoms include numbers (including decimals and exponents), `t` (true), `nil` (false), strings, and symbols. Only atoms beginning with `$` are symbols; all other unquoted non-numeric atoms are string values. Use `""` for the empty string.
@@ -41,26 +41,42 @@ lisp.Eval(["+", 1, ["*", 2, 3]]) ; 7, evaluates the array directly
 
 | Form | Behavior |
 | --- | --- |
-| `(+ a b ...)`, `(- a b ...)`, `(* a b ...)`, `(/ a b ...)`, `(% a b)` | Numeric arithmetic; unary `-` negates. |
-| `(= a b)`, `(!= a b)`, `(< a b)`, `(<= a b)`, `(> a b)`, `(>= a b)` | Comparisons. `==` and `<>` are aliases for `=` and `!=`. |
-| `(and a b ...)`, `(or a b ...)`, `(not a)` | Boolean operations; `and` and `or` short circuit and return operand values. `or` treats a missing variable as absent so a later operand can serve as its fallback. A missing variable with no later operand raises an error. |
+| `(+ a b ...)` | Adds numbers. |
+| `(- a b ...)` | Subtracts numbers; unary `-` negates. |
+| `(* a b ...)` | Multiplies numbers. |
+| `(/ a b ...)` | Divides numbers. |
+| `(% a b)` | Returns the remainder. |
+| `(= a b)` | Compares values for equality. |
+| `(!= a b)` | Compares values for inequality. `<>` is an alias. |
+| `(== a b)` | Alias for `=`. |
+| `(< a b)` | Tests whether `a` is less than `b`. |
+| `(<= a b)` | Tests whether `a` is less than or equal to `b`. |
+| `(> a b)` | Tests whether `a` is greater than `b`. |
+| `(>= a b)` | Tests whether `a` is greater than or equal to `b`. |
+| `(and a b ...)` | Short-circuits and returns operand values. |
+| `(or a b ...)` | Short-circuits and returns operand values. A missing variable is treated as absent so a later operand can serve as its fallback. A missing variable with no later operand raises an error. |
+| `(not a)` | Performs boolean negation. |
 | `(if test then else)` | Conditional expression. Any expression is valid as the test; `nil` and numeric `0` are false. Only the selected branch is evaluated. |
 | `(when test body ...)` | Evaluates body expressions in order only when the test is true; returns the last result, or `nil` when false or with no body. |
 | `(make-env (name value) ...)` | Evaluates bindings in order. Returns an `Environment` containing the declared variables; values must be booleans, numbers, or strings. |
 | `(concat a b ...)` | Concatenates values as strings. |
 | `(join separator value ...)` | Joins values as strings using the required string separator. With no values, returns an empty string. |
 | `(copy-to-clipboard value)` | Copies a value to the Windows clipboard and returns a `NoResult` marker instead of a printable value. |
-| `(match text regex)` | True when the regular expression matches the text (`RegExMatch`). |
-| `(strip-prefix text prefix)`, `(strip-suffix text suffix)` | Removes a matching prefix or suffix; otherwise returns the original string. |
+| `(match text regex)` | Returns true when the regular expression matches the text (`RegExMatch`). |
+| `(strip-prefix text prefix)` | Removes a matching prefix; otherwise returns the original string. |
+| `(strip-suffix text suffix)` | Removes a matching suffix; otherwise returns the original string. |
 | `(length value)` | String length, array length, or map or environment entry count. |
 | `(substr text start [length])` | Returns a substring using AutoHotkey's 1-based `SubStr` indexing; negative positions count from the end. |
-| `(upper text)`, `(lower text)` | Converts a string to uppercase or lowercase. |
+| `(upper text)` | Converts a string to uppercase. |
+| `(lower text)` | Converts a string to lowercase. |
 | `(trim text [omit-characters])` | Trims the specified characters from both ends. By default, trims spaces, tabs, carriage returns, and line feeds. |
 | `(replace text search replacement)` | Replaces all case-sensitive occurrences of a non-empty search string. |
-| `(starts-with text prefix)`, `(ends-with text suffix)` | Case-sensitive prefix/suffix checks. An empty prefix or suffix matches. |
+| `(starts-with text prefix)` | Performs a case-sensitive prefix check. An empty prefix matches. |
+| `(ends-with text suffix)` | Performs a case-sensitive suffix check. An empty suffix matches. |
 | `(index-of text search)` | Returns the 1-based position of the first case-sensitive match, or `0` when not found. |
 | `(get value key-or-path)` | Retrieves an environment or map key, native object property, or 1-based array index. Dot-separated paths traverse nested values. Missing values raise an error. |
-| `(contains array value)` / `(in array value)` | Tests array membership. Also supports environment keys, map keys, and substring checks. |
+| `(contains array value)` | Tests array membership. Also supports environment keys, map keys, and substring checks. |
+| `(in array value)` | Alias for `contains`. |
 
 Use an `Environment` to add typed variables and merge another environment:
 
@@ -116,7 +132,7 @@ Without a fallback, a missing variable raises an error. In a larger expression, 
 
 `Eval` is the only evaluation method exposed by an `Interpreter` instance. Its parser, evaluator, cache, and builtin registry are held in closures rather than a separately constructible engine class. Special forms (`if`, `and`, `or`, and `not`) control evaluation directly; other operators are dispatched through the builtin registry. Interpreter failures use `EvaluationError`, with the failed expression available in its `expr` property when evaluation has begun.
 
-`copy-to-clipboard` returns an instance of `NoResult`, allowing callers to distinguish a side-effect-only result from ordinary values such as `false` (the interpreter's `nil`). Check with `result is NoResult` when deciding whether to display an evaluation result.
+<font color="red">**Important:** `copy-to-clipboard` returns an instance of `NoResult`, not a printable value. Check with `result is NoResult` before displaying an evaluation result; this distinguishes the side-effect-only result from ordinary values such as `false` (the interpreter's `nil`).</font>
 
 ## Benchmarking
 
