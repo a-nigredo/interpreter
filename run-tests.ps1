@@ -44,7 +44,7 @@ if (-not (Test-Path -LiteralPath $AutoHotkeyPath -PathType Leaf)) {
 }
 
 $caseNames = @(
-    [regex]::Matches((Get-Content -LiteralPath $testScript -Raw), '(?m)^\s*Assert(?:CacheConfiguration|EvalCache|MakeEnv|Environment|InterpreterFacade|Eval|Throws|EvaluationError|EvaluationPosition|EvaluationCause|ReaderThrows|GetOneThrows|ObjectPassthrough|Clipboard|NoResult)\("([^"]+)"') |
+    [regex]::Matches((Get-Content -LiteralPath $testScript -Raw), '(?m)^\s*Assert(?:CacheConfiguration|EvalCache|Set|Environment|InterpreterFacade|Eval|Throws|EvaluationError|EvaluationPosition|EvaluationCause|ReaderThrows|GetOneThrows|ObjectPassthrough|Clipboard|NoResult)\("([^"]+)"') |
         ForEach-Object { $_.Groups[1].Value }
 )
 

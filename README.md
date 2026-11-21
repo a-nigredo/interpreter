@@ -63,7 +63,7 @@ lisp.Eval(["+", 1, ["*", 2, 3]]) ; 7, evaluates the array directly
 | `(do expression ...)` | Evaluates expressions in order and returns the last result, or `nil` when empty. |
 | `(let (name value ...) body ...)` | Evaluates alternating names and values in the outer environment, then evaluates the body in a local scope containing those bindings. Local names shadow outer values; returns `nil` with no body. |
 | `(func (parameter ...) body ...)` | Creates a lexically scoped function. Call it with `((func (x) (+ $x 1)) 2)` or bind it with `let` and invoke it as `($function 2)`. |
-| `(make-env (name value) ...)` | Evaluates bindings in order. Returns a `Map` containing the declared variables; values can be any AutoHotkey values, including maps, arrays, objects, and `NoResult`. |
+| `(set (name value) ...)` | Evaluates and assigns bindings in order in the current environment. Returns `nil`. |
 | `(concat a b ...)` | Concatenates values as strings. |
 | `(join separator value ...)` | Joins values as strings using the required string separator. With no values, returns an empty string. |
 | `(array value ...)` | Creates an array from the evaluated values. With no values, returns an empty array. |
@@ -108,17 +108,15 @@ Use `array` to construct arrays in source. Both `get` and dotted symbol paths us
   (concat $items.1 " and " (get $items 2)))
 ```
 
-Use `make-env` to compute a `Map` once and pass it to later calls or merge it into an existing map:
+Use `set` to assign variables in the current environment:
 
 ```autohotkey
-context := lisp.Eval('(make-env (name "Ada") (greeting (concat "Hello, " $name)))')
+context := Map()
+lisp.Eval('(set (name "Ada") (greeting (concat "Hello, " $name)))', context)
 lisp.Eval('(concat $greeting "!")', context) ; "Hello, Ada!"
-env := Map("count", 3)
-for name, value in context
-    env[name] := value
 ```
 
-Bindings are evaluated sequentially, so each value can reference earlier names. When an input Map or object is supplied, its values are visible while computing bindings, but are not copied into or changed by `make-env`. Each new binding may contain any AutoHotkey value, including nested maps and arrays.
+Bindings are evaluated and assigned sequentially, so each value can reference earlier assignments. A supplied Map or plain object is modified in place; without one, assignments last only for the current evaluation. Existing names are overwritten. Assignments made before an error remain in the environment. `let` and function bodies use local copies, so their assignments do not modify the outer environment. Values can be any AutoHotkey value, including nested maps and arrays.
 
 Use `let` for temporary local bindings and `func` for functions that capture their surrounding values:
 
@@ -142,7 +140,7 @@ Without a fallback, a missing variable raises an error. In a larger expression, 
 
 ## Implementation
 
-`Eval` is the only evaluation method exposed by an `Interpreter` instance. Its parser, evaluator, cache, and builtin registry are held in closures rather than a separately constructible engine class. Special forms (`if`, `and`, `or`, `not`, `do`, `let`, and `func`) control evaluation directly; other operators are dispatched through the builtin registry. Interpreter failures use `EvaluationError`, with the failed expression available in its `expr` property when evaluation has begun.
+`Eval` is the only evaluation method exposed by an `Interpreter` instance. Its parser, evaluator, cache, and builtin registry are held in closures rather than a separately constructible engine class. Special forms (`if`, `cond`, `when`, `and`, `or`, `not`, `do`, `let`, `func`, `set`, and `get`) control evaluation directly; other operators are dispatched through the builtin registry. Interpreter failures use `EvaluationError`, with the failed expression available in its `expr` property when evaluation has begun.
 
 <font color="red">**Important:** `copy-to-clipboard` returns an instance of `NoResult`, not a printable value. Check with `result is NoResult` before displaying an evaluation result.</font>
 

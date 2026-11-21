@@ -106,13 +106,13 @@ class Interpreter {
     static _FormDo := "do"
     static _FormLet := "let"
     static _FormFunc := "func"
+    static _FormSet := "set"
     static _FormAnd := "and"
     static _FormOr := "or"
     static _FormNot := "not"
     static _OpeningParenthesis := "("
     static _ClosingParenthesis := ")"
     static _OperatorGet := "get"
-    static _OperatorMakeEnv := "make-env"
 
     __New(cacheSize := 256) {
         this.DefineProp("Eval", {Call: Evaluate})
@@ -556,8 +556,8 @@ class Interpreter {
                 path := _Evaluate(items[3], env)
                 return _GetPath(target, path)
             }
-            if (isNamedOperator && op = Interpreter._OperatorMakeEnv)
-                return _EvaluateMakeEnv(items, env)
+            if (isNamedOperator && op = Interpreter._FormSet)
+                return _EvaluateSet(items, env)
             args := []
             index := 2
             while (index <= items.Length) {
@@ -676,28 +676,30 @@ class Interpreter {
             return false
         }
 
-        _EvaluateMakeEnv(items, env) {
-            variables := Map()
-            scope := _CopyEnvironment(env)
+        _EvaluateSet(items, env) {
+            if !(env is Map) && !(IsObject(env) && Type(env) = "Object")
+                throw EvaluationError(Interpreter._FormSet " requires a Map or object context")
             index := 2
             while (index <= items.Length) {
                 binding := items[index]
                 if !(binding is SyntaxForm) || binding.items.Length != 2
-                    throw EvaluationError(Interpreter._OperatorMakeEnv " expects each binding to contain a name and one value expression")
+                    throw EvaluationError(Interpreter._FormSet " expects each binding to contain a name and one value expression")
 
-                name := _GetBindingName(binding.items[1], Interpreter._OperatorMakeEnv)
+                name := _GetBindingName(binding.items[1], Interpreter._FormSet)
 
-                value := _Evaluate(binding.items[2], scope)
-                _AddEnvironmentValue(variables, name, value)
-                _AddEnvironmentValue(scope, name, value)
+                value := _Evaluate(binding.items[2], env)
+                if (env is Map)
+                    env[name] := value
+                else
+                    env.%name% := value
                 index += 1
             }
-            return variables
+            return false
         }
 
         _CopyEnvironment(env) {
             if !(env is Map) && !(IsObject(env) && Type(env) = "Object")
-                throw EvaluationError(Interpreter._OperatorMakeEnv " requires a Map or object context")
+                throw EvaluationError("Environment must be a Map or object")
             copy := Map()
             if (env is Map) {
                 for name, value in env

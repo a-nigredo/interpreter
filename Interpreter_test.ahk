@@ -54,38 +54,50 @@ AssertEval(caseName, source, expected, env := 0, evaluator := 0) {
     }
 }
 
-AssertMakeEnv(caseName) {
+AssertSet(caseName) {
     global mainInterpreter
     try {
-        initialEnv := Map("prefix", "Hello, ")
-        variables := mainInterpreter.Eval(
-            '(make-env (name "Ada") (greeting (concat $prefix $name)) (ready (> 2 1)))',
-            initialEnv)
-        if !(variables is Map) || mainInterpreter.Eval("(length $env)", Map("env", variables)) != 3
-            throw Error("expected a Map containing three declared variables")
-        if (mainInterpreter.Eval("$name", variables) != "Ada"
-            || mainInterpreter.Eval("$greeting", variables) != "Hello, Ada"
-            || !mainInterpreter.Eval("$ready", variables))
-            throw Error("expected declared values and earlier bindings to be available")
-        if (mainInterpreter.Eval('(concat $greeting "!")', variables) != "Hello, Ada!")
-            throw Error("expected returned variables to be usable in a later Eval call")
-        if (mainInterpreter.Eval('(contains $env "name")', Map("env", initialEnv)))
-            throw Error("expected the input Map to remain unchanged")
-        if (mainInterpreter.Eval('(contains $env "prefix")', Map("env", variables)))
-            throw Error("expected input bindings not to be copied into the result Map")
+        env := Map("prefix", "Hello, ", "name", "old")
+        result := mainInterpreter.Eval(
+            '(set (name "Ada") (greeting (concat $prefix $name)) (ready (> 2 1)))', env)
+        if (result != false || env["name"] != "Ada" || env["greeting"] != "Hello, Ada"
+            || !env["ready"] || env["prefix"] != "Hello, ")
+            throw Error("expected sequential assignments to update the original Map")
+        if (mainInterpreter.Eval('(concat $greeting "!")', env) != "Hello, Ada!")
+            throw Error("expected assignments to be usable in a later Eval call")
 
-        nested := mainInterpreter.Eval('(make-env (name (get (make-env (value "nested")) "value")))')
-        if (nested["name"] != "nested")
-            throw Error("expected nested make-env to use a Map scope")
-
-        arrayVariables := mainInterpreter.Eval(
-            ["make-env", ["name", "Ada"], ["greeting", ['(concat "Hi, " $name)']]])
-        if (mainInterpreter.Eval("$greeting", arrayVariables) != "Hi, Ada")
+        arrayEnv := Map()
+        mainInterpreter.Eval(
+            ["set", ["name", "Ada"], ["greeting", ['(concat "Hi, " $name)']]], arrayEnv)
+        if (mainInterpreter.Eval("$greeting", arrayEnv) != "Hi, Ada")
             throw Error("expected expression arrays to support sequential bindings")
         data := Map("enabled", false, "items", [1, 2], "record", Map("name", "Ada"))
-        mapped := mainInterpreter.Eval(["make-env", ["data", data]])
-        if (mapped["data"] != data || mapped["data"]["record"]["name"] != "Ada")
-            throw Error("expected make-env to preserve nested Map and collection values")
+        mainInterpreter.Eval(["set", ["data", data]], arrayEnv)
+        if (arrayEnv["data"] != data || arrayEnv["data"]["record"]["name"] != "Ada")
+            throw Error("expected set to preserve nested Map and collection values")
+        objectEnv := {prefix: "Hi, ", name: "old"}
+        mainInterpreter.Eval('(set (name "Ada") (greeting (concat $prefix $name)))', objectEnv)
+        if (objectEnv.name != "Ada" || objectEnv.greeting != "Hi, Ada")
+            throw Error("expected assignments to update native object properties")
+        localEnv := Map("name", "outer")
+        if (mainInterpreter.Eval('(let (name "local") (set (name "updated")) $name)', localEnv) != "updated"
+            || localEnv["name"] != "outer")
+            throw Error("expected let assignments to remain in the local scope")
+        if (mainInterpreter.Eval('(do (set (f (func () (set (name "inner")) $name))) ($f))', localEnv) != "inner"
+            || localEnv["name"] != "outer")
+            throw Error("expected function assignments to remain in the function scope")
+        if (mainInterpreter.Eval('(do (set (first (set (nested 3)))) (+ $first $nested))') != 3)
+            throw Error("expected nested set expressions to share the current scope")
+        partialEnv := Map()
+        failed := false
+        try mainInterpreter.Eval("(set (first 1) (second $missing))", partialEnv)
+        catch EvaluationError as err {
+            failed := true
+            if !partialEnv.Has("first") || partialEnv.Has("second")
+                throw Error("expected earlier assignments to survive a later error")
+        }
+        if !failed
+            throw Error("expected a later failing assignment to raise an error")
         RecordResult("PASS", caseName)
     } catch as err {
         RecordResult("FAIL", caseName, err.Message)
@@ -448,7 +460,7 @@ AssertEval("Array values are available with one-based symbol paths",
 AssertEval("Array symbol paths support arbitrary one-based indexes",
     '(let (arr (array "first" "second" "third" "fourth")) $arr.4)', "fourth")
 AssertEval("Array symbol paths traverse nested values",
-    '(let (arr (array (make-env (name "Ada")))) $arr.1.name)', "Ada")
+    '(let (arr (array $record)) $arr.1.name)', "Ada", Map("record", Map("name", "Ada")))
 AssertThrows("Array symbol path rejects index zero",
     '(let (arr (array "first")) $arr.0)', "Array index out of range")
 AssertThrows("Array symbol path rejects out-of-range index",
@@ -488,7 +500,7 @@ AssertEval("String contains substring", '(contains "hello" "ell")', true)
 AssertEval("Membership alias on environment value", "(in $numbers 3)", true, collectionEnv)
 AssertEval("Membership alias supports map keys", '(in $lookup "a")', true, collectionEnv)
 AssertEval("Membership alias supports substrings", '(in "hello" "xyz")', false)
-AssertEval("Membership alias supports make-env map keys", '(in (make-env (name "Ada")) "name")', true)
+AssertEval("Membership alias supports nested map keys", '(in $record "name")', true, Map("record", Map("name", "Ada")))
 AssertThrows("Contains rejects unsupported values", "(contains 42 1)", "contains expects")
 AssertEval("Array does not contain value", "(contains $numbers 99)", false, collectionEnv)
 AssertEval("Map does not contain key", '(contains $lookup "missing")', false, collectionEnv)
@@ -512,7 +524,7 @@ AssertEval("Get native object property", '(get $profile "name")', "Ada", Map("pr
 AssertEval("Get nested object property", '(get $profile "user.name")', "Grace", Map("profile", {user: {name: "Grace"}}))
 AssertEval("Get traverses mixed map object and array paths", '(get $data "user.items.2")', "coffee",
     Map("data", Map("user", {items: ["tea", "coffee"]})))
-AssertThrows("Get rejects missing make-env map key", '(get (make-env) "missing")', "Missing map key")
+AssertThrows("Get rejects missing empty map key", '(get $empty "missing")', "Missing map key", Map("empty", Map()))
 AssertThrows("Get validates argument count", '(get lookup)', "expects a value")
 AssertThrows("Get rejects missing map key", '(get $lookup "missing")', "Missing map key", collectionEnv)
 AssertThrows("Get rejects out-of-range array index", '(get $items 3)', "Array index out of range", collectionEnv)
@@ -637,26 +649,22 @@ AssertEval("string? rejects numbers", "(string? 2)", false)
 AssertEval("number? accepts nil's native integer value", "(number? nil)", true)
 AssertEval("integer? accepts t's native integer value", "(integer? t)", true)
 AssertThrows("number? validates argument count", "(number?)", "expects 1 argument")
-AssertMakeEnv("make-env returns sequential bindings for reuse")
+AssertSet("set updates environments with sequential bindings")
 AssertEnvironment("Native Map supports evaluation and nested values")
 AssertInterpreterFacade("Interpreter exposes Eval without engine internals")
-mergeInput := Map("name", "merged")
-AssertThrows("make-env rejects direct map entries as binding syntax", ["make-env", mergeInput], "each binding to contain")
-AssertThrows("make-env rejects environment-producing forms",
-    '(make-env (if t (make-env (name "Ada")) (make-env)))', "each binding to contain")
-AssertThrows("make-env rejects scalar entries", "(make-env 42)", "each binding to contain")
-AssertEval("make-env treats two-item forms as bindings",
-    '(get (make-env (make-env "value")) "make-env")', "value")
-makeEnvContext := Map("prefix", "Hello, ")
-AssertEval("make-env reads variables from the supplied context",
-    '(get (make-env (greeting (concat $prefix "Ada"))) "greeting")',
-    "Hello, Ada", makeEnvContext)
-AssertEval("make-env accepts an empty Map context", "(length (make-env))", 0, Map())
-AssertEval("make-env accepts a plain object context",
-    '(get (make-env (greeting (concat $prefix "Ada"))) "greeting")', "Hi, Ada", {prefix: "Hi, "})
-AssertEval("make-env without bindings returns an empty environment", "(length (make-env))", 0)
-AssertThrows("make-env rejects malformed bindings", '(make-env (name))', "each binding to contain")
-AssertThrows("make-env rejects dotted variable names", '(make-env ("user.name" 1))', "cannot contain a dot")
+AssertThrows("set rejects direct map entries as binding syntax", ["set", Map("name", "merged")], "each binding to contain")
+AssertThrows("set rejects scalar entries", "(set 42)", "each binding to contain")
+AssertEval("set treats two-item forms as bindings", '(do (set (set "value")) $set)', "value")
+AssertEval("set returns nil after assignments", '(set (first 1) (second 2))', false)
+AssertEval("set without bindings returns nil", "(set)", false)
+AssertEval("set accepts symbol binding names", '(do (set ($name "Ada")) $name)', "Ada")
+AssertEval("set supports a computed operator", '(do ((if t "set" "set") (name "Ada")) $name)', "Ada")
+AssertEval("set updates repeated bindings in sequence", '(do (set (count 1) (count (+ $count 1))) $count)', 2)
+AssertEval("set works in a function local scope",
+    '(let (f (func (x) (set (x (+ $x 1))) $x)) ($f 2))', 3)
+AssertThrows("set rejects malformed bindings", '(set (name))', "each binding to contain")
+AssertThrows("set rejects dotted variable names", '(set ("user.name" 1))', "cannot contain a dot")
+AssertThrows("make-env is no longer an operator", "(make-env)", "Unknown operator: make-env")
 lookupEnv := Map("name", "Ada", "user", Map("name", "Grace"), "count", 7)
 AssertEval("or returns an existing variable value", "(or $name)", "Ada", lookupEnv)
 AssertEval("or skips fallback for an existing variable", '(or $name "guest")', "Ada", lookupEnv)
