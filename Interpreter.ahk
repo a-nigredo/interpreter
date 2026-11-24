@@ -267,10 +267,15 @@ class Interpreter {
 
         _ParseAtom(text, position := unset, source := unset) {
             if (SubStr(text, 1, 1) = "$") {
-                symbol := {symbol: SubStr(text, 2)}
+                optional := SubStr(text, 2, 1) = "?"
+                symbol := {symbol: SubStr(text, optional ? 3 : 2)}
                 if IsSet(position) {
                     symbol.position := position
                     symbol.source := source
+                }
+                if optional {
+                    items := [Interpreter._FormOr, symbol, false]
+                    return IsSet(position) ? SyntaxForm(items, position, source) : SyntaxForm(items)
                 }
                 return symbol
             }
@@ -327,7 +332,7 @@ class Interpreter {
                 throw EvaluationError("An expression array must start with an operator string.")
             _ValidateOperatorName(items[1])
             if (SubStr(items[1], 1, 1) = "$")
-                formItems.Push({symbol: SubStr(items[1], 2)})
+                formItems.Push(_ParseAtom(items[1]))
             else
                 formItems.Push(items[1])
             index := 2

@@ -29,6 +29,7 @@ lisp.Eval(["+", 1, ["*", 2, 3]]) ; 7, evaluates the array directly
 - Strings can use double quotes or backticks as delimiters. Backtick escapes in double-quoted strings support `` `n``, `` `r``, and `` `t``; doubled delimiters represent a literal delimiter inside either string form.
 - Atoms include numbers (including decimals and exponents), `t` (true), `nil` (false), strings, and symbols. Only atoms beginning with `$` are symbols; all other unquoted non-numeric atoms are string values. Use `""` for the empty string.
 - Numbers, strings, `t`, and `nil` are self-evaluating; `$`-prefixed symbols are looked up in the evaluation environment. Dotted symbols traverse nested maps, object properties, or arrays; array indices in dotted symbols are 1-based, matching AutoHotkey arrays (for example, `$user.name` or `$items.1`).
+- `$?name` and `$?user.name` are shorthand for `(or $name nil)` and `(or $user.name nil)`. They return `nil` for lookup errors and falsey values, including `0` and `""`.
 - `if`, `when`, `and`, `or`, and `not` use AutoHotkey v2 truthiness: `false`, `0`, and `""` are false; other values are true. `and` and `or` short-circuit and return operand values.
 - `Eval(sourceOrExpression, env)` accepts Lisp source text or a nested expression array, plus an optional `Map` or native object environment. In expression arrays, each non-empty array is a form: its first string is the operator and subsequent strings are literal values; nested arrays are nested forms. A one-element string array is parsed as Lisp source, including when nested in another expression array. A `cond` clause may also be provided as a Lisp source string beginning with `(`. Maps and objects can be nested in the environment and passed through to results.
 - Booleans follow AutoHotkey's native representation: `false` is numeric `0`, and `true` is numeric `1`. The interpreter does not preserve a type distinction between booleans and those numbers; use `number?` or `integer?` to inspect them.
@@ -137,6 +138,15 @@ Use `or` to look up an environment variable or nested path and optionally supply
 ```
 
 Without a fallback, a missing variable raises an error. In a larger expression, use `or` as an expression, for example `(concat "Hello, " (or $user.name "guest"))`.
+
+When the fallback is `nil`, use the optional lookup shorthand:
+
+```lisp
+$?name              ; (or $name nil)
+$?user.profile.name ; (or $user.profile.name nil)
+```
+
+Like `or`, this also returns `nil` for falsey values and for lookup errors such as a missing key or an invalid path through a scalar.
 
 ## Implementation
 
