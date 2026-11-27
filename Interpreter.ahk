@@ -119,6 +119,7 @@ class Interpreter {
     static _FormWhen := "when"
     static _FormDo := "do"
     static _FormLet := "let"
+    static _FormLetSequential := "let*"
     static _FormFunc := "func"
     static _FormSet := "set"
     static _FormAnd := "and"
@@ -371,7 +372,8 @@ class Interpreter {
                     index += 1
                     continue
                 }
-                if (items[1] = Interpreter._FormLet && index = 2 && item is Array) {
+                if ((items[1] = Interpreter._FormLet || items[1] = Interpreter._FormLetSequential)
+                    && index = 2 && item is Array) {
                     bindings := []
                     for bindingIndex, bindingItem in item {
                         if Mod(bindingIndex, 2) = 0 {
@@ -539,6 +541,8 @@ class Interpreter {
                 return _EvaluateBody(items, 2, env)
             if (isNamedOperator && op = Interpreter._FormLet)
                 return _EvaluateLet(items, env)
+            if (isNamedOperator && op = Interpreter._FormLetSequential)
+                return _EvaluateLetSequential(items, env)
             if (isNamedOperator && op = Interpreter._FormFunc)
                 return _EvaluateFunc(items, env)
             if (isNamedOperator && op = Interpreter._FormAnd) {
@@ -641,6 +645,33 @@ class Interpreter {
             scope := _CopyEnvironment(env)
             for index, name in names
                 _AddEnvironmentValue(scope, name, values[index])
+            return _EvaluateBody(items, 3, scope)
+        }
+
+        _EvaluateLetSequential(items, env) {
+            op := Interpreter._FormLetSequential
+            _RequireAtLeast(items, 2, op)
+            bindings := items[2]
+            if !(bindings is SyntaxForm)
+                throw EvaluationError(op " expects a binding list")
+            bindingItems := bindings.items
+            if (Mod(bindingItems.Length, 2) != 0)
+                throw EvaluationError(op " expects alternating names and values")
+
+            scope := env
+            index := 1
+            while (index <= bindingItems.Length) {
+                nameExpr := bindingItems[index]
+                if (nameExpr is SyntaxForm)
+                    throw EvaluationError(op " expects alternating names and values")
+                name := _GetBindingName(nameExpr, op)
+                value := _Evaluate(bindingItems[index + 1], scope)
+                scope := _CopyEnvironment(scope)
+                _AddEnvironmentValue(scope, name, value)
+                index += 2
+            }
+            if (bindingItems.Length = 0)
+                scope := _CopyEnvironment(env)
             return _EvaluateBody(items, 3, scope)
         }
 

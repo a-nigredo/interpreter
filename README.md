@@ -77,6 +77,7 @@ lisp.Eval(["+", 1, ["*", 2, 3]]) ; 7, evaluates the array directly
 | `(when test body ...)` | Evaluates body expressions in order only when the test is true; returns the last result, or `nil` when false or with no body. |
 | `(do expression ...)` | Evaluates expressions in order and returns the last result, or `nil` when empty. |
 | `(let (name value ...) body ...)` | Evaluates alternating names and values in the outer environment, then evaluates the body in a local scope containing those bindings. Local names shadow outer values; returns `nil` with no body. |
+| `(let* (name value ...) body ...)` | Evaluates bindings sequentially, so each value can use earlier bindings; evaluates the body in a local scope. Repeated names shadow earlier bindings. |
 | `(func (parameter ...) body ...)` | Creates a lexically scoped function. Call it with `((func (x) (+ $x 1)) 2)` or bind it with `let` and invoke it as `($function 2)`. |
 | `(set (name value) ...)` | Evaluates and assigns bindings in order in the current environment. Returns `nil`. |
 | `(concat a b ...)` | Concatenates values as strings. |
@@ -158,6 +159,17 @@ Use `let` for temporary local bindings and `func` for functions that capture the
 
 `let` bindings are written as alternating names and value expressions without a separate pair of parentheses around every binding. Initializers are evaluated in the environment outside the new bindings. Lambda parameters and local bindings are referenced with `$`, just like environment variables.
 
+Use `let*` instead when later initializers depend on earlier bindings:
+
+```lisp
+(let* (price 10
+       tax (* $price 0.2)
+       total (+ $price $tax))
+  $total) ; 12
+```
+
+Like nested `let` forms, each initializer runs in the scope of the preceding bindings. The first initializer runs in the outer environment; the body and later initializers use local scopes. Repeated names are allowed and shadow earlier bindings.
+
 Use `or` to look up an environment variable or nested path and optionally supply a fallback. The fallback is one expression:
 
 ```lisp
@@ -179,7 +191,7 @@ Like `or`, this also returns `nil` for falsey values and for lookup errors such 
 
 ## Implementation
 
-`Eval` is the only evaluation method exposed by an `Interpreter` instance. Its parser, evaluator, cache, and builtin registry are held in closures rather than a separately constructible engine class. Special forms (`if`, `cond`, `when`, `and`, `or`, `not`, `do`, `let`, `func`, `set`, and `get`) control evaluation directly; other operators are dispatched through the builtin registry. Interpreter failures use `EvaluationError`, with the failed expression available in its `expr` property when evaluation has begun.
+`Eval` is the only evaluation method exposed by an `Interpreter` instance. Its parser, evaluator, cache, and builtin registry are held in closures rather than a separately constructible engine class. Special forms (`if`, `cond`, `when`, `and`, `or`, `not`, `do`, `let`, `let*`, `func`, `set`, and `get`) control evaluation directly; other operators are dispatched through the builtin registry. Interpreter failures use `EvaluationError`, with the failed expression available in its `expr` property when evaluation has begun.
 
 <font color="red">**Important:** `copy-to-clipboard` returns an instance of `NoResult`, not a printable value. Check with `result is NoResult` before displaying an evaluation result.</font>
 

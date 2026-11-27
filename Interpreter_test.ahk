@@ -668,6 +668,25 @@ AssertThrows("Let rejects malformed bindings", "(let (x))", "alternating names a
 AssertThrows("Let rejects an unmatched flat binding",
     "(let (x 1 y) $x)", "alternating names and values")
 AssertThrows("Let rejects duplicate names", "(let (x 1 x 2) $x)", "must be unique")
+AssertEval("Let star evaluates dependent bindings", "(let* (price 10 tax (* $price 0.2) total (+ $price $tax)) $total)", 12)
+AssertEval("Let star evaluates expression array bindings",
+    ["let*", ["x", 2, "y", "(+ $x 3)"], ["(* $x $y)"]], 10)
+AssertEval("Let star initializers see previous shadowing", "(let* (x (+ $x 1) y $x) $y)", 10, Map("x", 9))
+AssertEval("Let star allows sequential rebinding", "(let* (x 1 x (+ $x 1)) $x)", 2)
+AssertEval("Let star closures capture earlier bindings",
+    "(let* (x 1 f (func () $x) x 2) ($f))", 1)
+AssertEval("Let star bindings stay local", "(do (let* (x 2 y $x) $y) $x)", 1, Map("x", 1))
+AssertEval("Let star with no body returns nil", "(let* ())", false)
+AssertEval("Let star empty bindings create a local scope", "(do (let* () (set (x 2))) $x)", 1, Map("x", 1))
+AssertEval("Let star first initializer uses outer scope",
+    "(do (let* (x (do (set (outer 2)) 1)) $x) $outer)", 2, Map("outer", 1))
+AssertEval("Let star later initializers use local scope",
+    "(do (let* (x 1 y (do (set (outer 2)) $x)) $y) $outer)", 1, Map("outer", 1))
+AssertThrows("Let star requires a binding list", "(let* 1 2)", "expects a binding list")
+AssertThrows("Let star rejects odd bindings", "(let* (x 1 y) $x)", "alternating names and values")
+AssertThrows("Let star rejects parenthesized binding pairs", "(let* ((x 2)) $x)", "alternating names and values")
+AssertThrows("Let star rejects invalid binding names", "(let* (a.b 1) 2)", "binding name")
+AssertThrows("Let star cannot see later bindings", "(let* (x $y y 2) $x)", "y")
 AssertEval("Function accepts arguments and evaluates multiple body forms",
     "((func (x y) (+ $x 1) (+ $x $y)) 2 3)", 5)
 AssertEval("Function can be bound and called by variable",
