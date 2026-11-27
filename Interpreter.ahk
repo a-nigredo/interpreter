@@ -70,6 +70,19 @@ class Interpreter {
     static _OperatorMultiply := "*"
     static _OperatorDivide := "/"
     static _OperatorModulo := "%"
+    static _OperatorFloor := "floor"
+    static _OperatorCeil := "ceil"
+    static _OperatorRound := "round"
+    static _OperatorAbs := "abs"
+    static _OperatorSqrt := "sqrt"
+    static _OperatorPow := "pow"
+    static _OperatorMin := "min"
+    static _OperatorMax := "max"
+    static _OperatorNow := "now"
+    static _OperatorDateAdd := "date-add"
+    static _OperatorDateDiff := "date-diff"
+    static _OperatorUnixTimestamp := "unix-timestamp"
+    static _OperatorFromUnixTimestamp := "from-unix-timestamp"
     static _OperatorEqual := "="
     static _OperatorEqualAlias := "=="
     static _OperatorNotEqual := "!="
@@ -126,6 +139,19 @@ class Interpreter {
             Interpreter._OperatorMultiply, _BuiltinMultiply,
             Interpreter._OperatorDivide, _BuiltinDivide,
             Interpreter._OperatorModulo, _BuiltinModulo,
+            Interpreter._OperatorFloor, _BuiltinFloor,
+            Interpreter._OperatorCeil, _BuiltinCeil,
+            Interpreter._OperatorRound, _BuiltinRound,
+            Interpreter._OperatorAbs, _BuiltinAbs,
+            Interpreter._OperatorSqrt, _BuiltinSqrt,
+            Interpreter._OperatorPow, _BuiltinPow,
+            Interpreter._OperatorMin, _BuiltinMin,
+            Interpreter._OperatorMax, _BuiltinMax,
+            Interpreter._OperatorNow, _BuiltinNow,
+            Interpreter._OperatorDateAdd, _BuiltinDateAdd,
+            Interpreter._OperatorDateDiff, _BuiltinDateDiff,
+            Interpreter._OperatorUnixTimestamp, _BuiltinUnixTimestamp,
+            Interpreter._OperatorFromUnixTimestamp, _BuiltinFromUnixTimestamp,
             Interpreter._OperatorEqual, _BuiltinEqual,
             Interpreter._OperatorEqualAlias, _BuiltinEqual,
             Interpreter._OperatorNotEqual, _BuiltinNotEqual,
@@ -788,6 +814,124 @@ class Interpreter {
         _BuiltinModulo(args) {
             _RequireCount(args, 2, Interpreter._OperatorModulo)
             return Mod(_Number(args[1]), _Number(args[2]))
+        }
+
+        _BuiltinFloor(args) {
+            _RequireCount(args, 1, Interpreter._OperatorFloor)
+            return Floor(_Number(args[1]))
+        }
+
+        _BuiltinCeil(args) {
+            _RequireCount(args, 1, Interpreter._OperatorCeil)
+            return Ceil(_Number(args[1]))
+        }
+
+        _BuiltinRound(args) {
+            if (args.Length < 1 || args.Length > 2)
+                throw EvaluationError(Interpreter._OperatorRound " expects 1 or 2 arguments")
+            value := _Number(args[1])
+            digits := args.Length = 2 ? _RequireInteger(args[2], Interpreter._OperatorRound, "digits") : 0
+            return Round(value, digits) + 0
+        }
+
+        _BuiltinAbs(args) {
+            _RequireCount(args, 1, Interpreter._OperatorAbs)
+            return Abs(_Number(args[1]))
+        }
+
+        _BuiltinSqrt(args) {
+            _RequireCount(args, 1, Interpreter._OperatorSqrt)
+            return Sqrt(_Number(args[1]))
+        }
+
+        _BuiltinPow(args) {
+            _RequireCount(args, 2, Interpreter._OperatorPow)
+            return _Number(args[1]) ** _Number(args[2])
+        }
+
+        _BuiltinMin(args) {
+            _RequireAtLeast(args, 1, Interpreter._OperatorMin)
+            value := _Number(args[1])
+            for item in args
+                value := Min(value, _Number(item))
+            return value
+        }
+
+        _BuiltinMax(args) {
+            _RequireAtLeast(args, 1, Interpreter._OperatorMax)
+            value := _Number(args[1])
+            for item in args
+                value := Max(value, _Number(item))
+            return value
+        }
+
+        _BuiltinNow(args) {
+            _RequireCount(args, 0, Interpreter._OperatorNow)
+            return _FormatUtcDate(A_NowUTC)
+        }
+
+        _BuiltinDateAdd(args) {
+            _RequireCount(args, 3, Interpreter._OperatorDateAdd)
+            date := _ParseUtcDate(args[1], Interpreter._OperatorDateAdd)
+            amount := _Number(args[2])
+            unit := _DateUnit(args[3], Interpreter._OperatorDateAdd)
+            return _FormatUtcDate(DateAdd(date, amount, unit))
+        }
+
+        _BuiltinDateDiff(args) {
+            _RequireCount(args, 3, Interpreter._OperatorDateDiff)
+            first := _ParseUtcDate(args[1], Interpreter._OperatorDateDiff)
+            second := _ParseUtcDate(args[2], Interpreter._OperatorDateDiff)
+            unit := _DateUnit(args[3], Interpreter._OperatorDateDiff)
+            return DateDiff(first, second, unit)
+        }
+
+        _BuiltinUnixTimestamp(args) {
+            _RequireCount(args, 1, Interpreter._OperatorUnixTimestamp)
+            return DateDiff(_ParseUtcDate(args[1], Interpreter._OperatorUnixTimestamp), "19700101000000", "Seconds")
+        }
+
+        _BuiltinFromUnixTimestamp(args) {
+            _RequireCount(args, 1, Interpreter._OperatorFromUnixTimestamp)
+            seconds := _RequireInteger(args[1], Interpreter._OperatorFromUnixTimestamp, "timestamp")
+            if (seconds < -11644473600 || seconds > 253402300799)
+                throw EvaluationError(Interpreter._OperatorFromUnixTimestamp " timestamp is out of range")
+            return _FormatUtcDate(DateAdd("19700101000000", seconds, "Seconds"))
+        }
+
+        _ParseUtcDate(value, op) {
+            date := _RequireString(value, op, "date")
+            if !RegExMatch(date, "^(\d{4})-(\d{2})-(\d{2})(?:T(\d{2}):(\d{2}):(\d{2})(?:Z|([+-])(\d{2}):(\d{2})))?$", &parts)
+                throw EvaluationError(op " expects a UTC date in YYYY-MM-DD or YYYY-MM-DDTHH:mm:ssZ/offset format")
+            timestamp := parts[1] parts[2] parts[3]
+            timestamp .= parts[4] = "" ? "000000" : parts[4] parts[5] parts[6]
+            try DateDiff(timestamp, "19700101000000", "Seconds")
+            catch ValueError
+                throw EvaluationError(op " expects a valid UTC date from year 1601 onward")
+            if (parts[7] != "") {
+                hours := parts[8] + 0
+                minutes := parts[9] + 0
+                if (hours > 23 || minutes > 59)
+                    throw EvaluationError(op " expects a valid UTC offset")
+                offset := (hours * 60 + minutes) * (parts[7] = "+" ? -1 : 1)
+                timestamp := DateAdd(timestamp, offset, "Minutes")
+                _FormatUtcDate(timestamp)
+            }
+            return timestamp
+        }
+
+        _FormatUtcDate(timestamp) {
+            if !RegExMatch(timestamp, "^\d{14}$") || SubStr(timestamp, 1, 4) + 0 < 1601
+                throw EvaluationError("UTC date result is out of range")
+            return SubStr(timestamp, 1, 4) "-" SubStr(timestamp, 5, 2) "-" SubStr(timestamp, 7, 2)
+                . "T" SubStr(timestamp, 9, 2) ":" SubStr(timestamp, 11, 2) ":" SubStr(timestamp, 13, 2) "Z"
+        }
+
+        _DateUnit(value, op) {
+            unit := _RequireString(value, op, "unit")
+            if !RegExMatch(unit, "i)^(seconds?|minutes?|hours?|days?)$")
+                throw EvaluationError(op " expects seconds, minutes, hours, or days")
+            return unit
         }
 
         _BuiltinEqual(args) {
