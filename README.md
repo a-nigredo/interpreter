@@ -55,6 +55,7 @@ lisp.Eval(["+", 1, ["*", 2, 3]]) ; 7, evaluates the array directly
 | `(now)` | Returns the current UTC date and time. |
 | `(date-add date amount unit)` | Adds an amount of time (or subtracts a negative amount) and returns a UTC date and time. |
 | `(date-diff first second unit)` | Returns `first - second` in whole units, using AutoHotkey's `DateDiff` rounding. |
+| `(format-date date [format])` | Formats a UTC date using AutoHotkey's `FormatTime` format; defaults to the current locale's time and long date. |
 | `(unix-timestamp date)` | Converts a date with a UTC designator or offset to integer Unix seconds. |
 | `(from-unix-timestamp seconds)` | Converts integer Unix seconds to a UTC date and time. |
 | `(= a b)` | Compares values for equality. |
@@ -100,7 +101,9 @@ lisp.Eval(["+", 1, ["*", 2, 3]]) ; 7, evaluates the array directly
 
 There is no `boolean?` predicate because AutoHotkey stores `false`/`true` as the same integer values as `0`/`1`; those values satisfy the corresponding integer and number predicates.
 
-Date operators accept `YYYY-MM-DD` (midnight UTC), `YYYY-MM-DDTHH:mm:ssZ`, or `YYYY-MM-DDTHH:mm:ss±HH:mm`. Numeric offsets are subtracted from the specified time to obtain UTC, and date results use the `YYYY-MM-DDTHH:mm:ssZ` format. Offsets must have hours from `00` through `23` and minutes from `00` through `59`; both `+00:00` and `-00:00` are treated as zero offset. Dates before and after normalization must be in years 1601 through 9999. Precision is whole seconds; timestamps without a timezone and fractional seconds are not accepted. Unix timestamps are seconds since 1970-01-01T00:00:00Z and can be negative. Date arithmetic supports seconds, minutes, hours, and days (singular or plural); `date-add` also accepts fractional amounts as supported by AutoHotkey.
+Date operators accept `YYYY-MM-DD` (midnight UTC), `YYYY-MM-DDTHH:mm:ss[.fraction]Z`, or `YYYY-MM-DDTHH:mm:ss[.fraction]±HH:mm`. A fractional part has one or more digits. Numeric offsets are subtracted from the specified time to obtain UTC. Offsets must have hours from `00` through `23` and minutes from `00` through `59`; both `+00:00` and `-00:00` are treated as zero offset. Dates before and after normalization must be in years 1601 through 9999; timestamps without a timezone are not accepted.
+
+`date-add` preserves the input's fractional digits, including trailing zeros, while adding the amount with AutoHotkey's whole-second `DateAdd` precision. Other date results use `YYYY-MM-DDTHH:mm:ssZ`. `date-diff` accounts for fractions and truncates the difference toward zero to whole seconds, minutes, hours, or days (singular or plural). `unix-timestamp` returns integer seconds since 1970-01-01T00:00:00Z, rounding down to the containing second, including before the epoch; `from-unix-timestamp` accepts integer seconds. `format-date` first normalizes the date to UTC, then applies [AutoHotkey FormatTime](https://www.autohotkey.com/docs/v2/lib/FormatTime.htm) patterns and locale rules. `FormatTime` has no fractional-second token, so the fraction is not included in formatted output.
 
 ```lisp
 (now)                                      ; e.g. "2026-11-27T08:25:25Z"
@@ -109,6 +112,8 @@ Date operators accept `YYYY-MM-DD` (midnight UTC), `YYYY-MM-DDTHH:mm:ssZ`, or `Y
 (from-unix-timestamp -1)                  ; "1969-12-31T23:59:59Z"
 (date-add "2024-02-28" 1 days)            ; "2024-02-29T00:00:00Z"
 (date-diff "2024-03-01" "2024-02-28" days) ; 2
+(date-add "2024-02-29T23:59:59.125Z" 1 seconds) ; "2024-03-01T00:00:00.125Z"
+(format-date "2024-02-29T13:04:05.125Z" "yyyy-MM-dd HH:mm:ss") ; "2024-02-29 13:04:05"
 ```
 
 Pass a `Map` directly as the environment. Nested collections remain ordinary AutoHotkey values:

@@ -81,6 +81,7 @@ class Interpreter {
     static _OperatorNow := "now"
     static _OperatorDateAdd := "date-add"
     static _OperatorDateDiff := "date-diff"
+    static _OperatorFormatDate := "format-date"
     static _OperatorUnixTimestamp := "unix-timestamp"
     static _OperatorFromUnixTimestamp := "from-unix-timestamp"
     static _OperatorEqual := "="
@@ -150,6 +151,7 @@ class Interpreter {
             Interpreter._OperatorNow, _BuiltinNow,
             Interpreter._OperatorDateAdd, _BuiltinDateAdd,
             Interpreter._OperatorDateDiff, _BuiltinDateDiff,
+            Interpreter._OperatorFormatDate, _BuiltinFormatDate,
             Interpreter._OperatorUnixTimestamp, _BuiltinUnixTimestamp,
             Interpreter._OperatorFromUnixTimestamp, _BuiltinFromUnixTimestamp,
             Interpreter._OperatorEqual, _BuiltinEqual,
@@ -875,7 +877,7 @@ class Interpreter {
             date := _ParseUtcDate(args[1], Interpreter._OperatorDateAdd)
             amount := _Number(args[2])
             unit := _DateUnit(args[3], Interpreter._OperatorDateAdd)
-            return _FormatUtcDate(DateAdd(date, amount, unit))
+            return _FormatUtcDate(DateAdd(date.timestamp, amount, unit), date.fraction)
         }
 
         _BuiltinDateDiff(args) {
@@ -883,12 +885,31 @@ class Interpreter {
             first := _ParseUtcDate(args[1], Interpreter._OperatorDateDiff)
             second := _ParseUtcDate(args[2], Interpreter._OperatorDateDiff)
             unit := _DateUnit(args[3], Interpreter._OperatorDateDiff)
-            return DateDiff(first, second, unit)
+            seconds := DateDiff(first.timestamp, second.timestamp, "Seconds")
+            fractionOrder := StrCompare(RTrim(first.fraction, "0"), RTrim(second.fraction, "0"), true)
+            if (seconds > 0 && fractionOrder < 0)
+                seconds -= 1
+            else if (seconds < 0 && fractionOrder > 0)
+                seconds += 1
+            unitLetter := StrLower(SubStr(unit, 1, 1))
+            divisor := unitLetter = "d" ? 86400 : unitLetter = "h" ? 3600 : unitLetter = "m" ? 60 : 1
+            return (seconds < 0 ? -1 : 1) * Floor(Abs(seconds) / divisor)
+        }
+
+        _BuiltinFormatDate(args) {
+            if (args.Length < 1 || args.Length > 2)
+                throw EvaluationError(Interpreter._OperatorFormatDate " expects 1 or 2 arguments")
+            date := _ParseUtcDate(args[1], Interpreter._OperatorFormatDate)
+            format := args.Length = 2 ? _RequireString(args[2], Interpreter._OperatorFormatDate, "format") : ""
+            if (StrLen(format) > 2000)
+                throw EvaluationError(Interpreter._OperatorFormatDate " format exceeds 2000 characters")
+            return FormatTime(date.timestamp, format)
         }
 
         _BuiltinUnixTimestamp(args) {
             _RequireCount(args, 1, Interpreter._OperatorUnixTimestamp)
-            return DateDiff(_ParseUtcDate(args[1], Interpreter._OperatorUnixTimestamp), "19700101000000", "Seconds")
+            date := _ParseUtcDate(args[1], Interpreter._OperatorUnixTimestamp)
+            return DateDiff(date.timestamp, "19700101000000", "Seconds")
         }
 
         _BuiltinFromUnixTimestamp(args) {
@@ -901,30 +922,31 @@ class Interpreter {
 
         _ParseUtcDate(value, op) {
             date := _RequireString(value, op, "date")
-            if !RegExMatch(date, "^(\d{4})-(\d{2})-(\d{2})(?:T(\d{2}):(\d{2}):(\d{2})(?:Z|([+-])(\d{2}):(\d{2})))?$", &parts)
-                throw EvaluationError(op " expects a UTC date in YYYY-MM-DD or YYYY-MM-DDTHH:mm:ssZ/offset format")
+            if !RegExMatch(date, "^(\d{4})-(\d{2})-(\d{2})(?:T(\d{2}):(\d{2}):(\d{2})(?:\.(\d+))?(?:Z|([+-])(\d{2}):(\d{2})))?$", &parts)
+                throw EvaluationError(op " expects a UTC date in YYYY-MM-DD or YYYY-MM-DDTHH:mm:ss[.fraction]Z/offset format")
             timestamp := parts[1] parts[2] parts[3]
             timestamp .= parts[4] = "" ? "000000" : parts[4] parts[5] parts[6]
             try DateDiff(timestamp, "19700101000000", "Seconds")
             catch ValueError
                 throw EvaluationError(op " expects a valid UTC date from year 1601 onward")
-            if (parts[7] != "") {
-                hours := parts[8] + 0
-                minutes := parts[9] + 0
+            if (parts[8] != "") {
+                hours := parts[9] + 0
+                minutes := parts[10] + 0
                 if (hours > 23 || minutes > 59)
                     throw EvaluationError(op " expects a valid UTC offset")
-                offset := (hours * 60 + minutes) * (parts[7] = "+" ? -1 : 1)
+                offset := (hours * 60 + minutes) * (parts[8] = "+" ? -1 : 1)
                 timestamp := DateAdd(timestamp, offset, "Minutes")
                 _FormatUtcDate(timestamp)
             }
-            return timestamp
+            return {timestamp: timestamp, fraction: parts[7]}
         }
 
-        _FormatUtcDate(timestamp) {
+        _FormatUtcDate(timestamp, fraction := "") {
             if !RegExMatch(timestamp, "^\d{14}$") || SubStr(timestamp, 1, 4) + 0 < 1601
                 throw EvaluationError("UTC date result is out of range")
             return SubStr(timestamp, 1, 4) "-" SubStr(timestamp, 5, 2) "-" SubStr(timestamp, 7, 2)
-                . "T" SubStr(timestamp, 9, 2) ":" SubStr(timestamp, 11, 2) ":" SubStr(timestamp, 13, 2) "Z"
+                . "T" SubStr(timestamp, 9, 2) ":" SubStr(timestamp, 11, 2) ":" SubStr(timestamp, 13, 2)
+                . (fraction = "" ? "" : "." fraction) "Z"
         }
 
         _DateUnit(value, op) {
