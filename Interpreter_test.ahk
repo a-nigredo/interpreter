@@ -7,6 +7,8 @@ mainInterpreter := Interpreter()
 cachedInterpreter := Interpreter()
 boundedCachedInterpreter := Interpreter(1)
 uncachedInterpreter := Interpreter(0)
+seededInterpreter := Interpreter(256, "((name Ada) (answer 42))")
+seededFunctionInterpreter := Interpreter(256, "((base 10) (add-base (func (x) (+ $x $base))))")
 resultsPath := A_Args.Length ? A_Args[1] : EnvGet("INTERPRETER_TEST_RESULTS")
 failedTests := 0
 
@@ -106,6 +108,8 @@ AssertSet(caseName) {
 
 AssertEnvironment(caseName) {
     global mainInterpreter
+    global seededInterpreter
+    global seededFunctionInterpreter
     try {
         data := Map("enabled", false, "count", 0, "name", "Ada",
             "record", Map("profile", Map("name", "Grace")), "items", ["tea", "coffee"])
@@ -123,6 +127,13 @@ AssertEnvironment(caseName) {
         if (mainInterpreter.Eval("(= nil 0)") != true
             || mainInterpreter.Eval("(= t 1)") != true)
             throw Error("expected booleans and numeric 0/1 to share AutoHotkey semantics")
+        if (seededInterpreter.Eval("$name") != "Ada"
+            || seededInterpreter.Eval('(concat "Hi, " $name)') != "Hi, Ada"
+            || seededInterpreter.Eval("(+ $answer 1)") != 43)
+            throw Error("expected constructor bindings to seed the default context")
+        if (seededFunctionInterpreter.Eval("($add-base 5)") != 15
+            || seededFunctionInterpreter.Eval("($add-base 0)") != 10)
+            throw Error("expected constructor bindings to support func values")
         for expression in ["(= 2 2)", "(not 0)", '(starts-with "abc" "a")', '(match "x" "x")'] {
             if (Type(mainInterpreter.Eval(expression)) != "Integer")
                 throw Error("expected boolean operators to return native AutoHotkey booleans")
@@ -224,6 +235,20 @@ AssertCacheConfiguration(caseName) {
             throw Error("expected fractional cache size to be rejected")
         } catch as err {
             if !InStr(err.Message, "non-negative integer")
+                throw err
+        }
+        try {
+            Interpreter(256, "(name 1)")
+            throw Error("expected non-list constructor bindings to be rejected")
+        } catch as err {
+            if !InStr(err.Message, "list of binding forms")
+                throw err
+        }
+        try {
+            Interpreter(256, "((name))")
+            throw Error("expected malformed constructor bindings to be rejected")
+        } catch as err {
+            if !InStr(err.Message, "(name value) pairs")
                 throw err
         }
         RecordResult("PASS", caseName)

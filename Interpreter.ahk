@@ -133,7 +133,7 @@ class Interpreter {
     static _ClosingParenthesis := ")"
     static _OperatorGet := "get"
 
-    __New(cacheSize := 256) {
+    __New(cacheSize := 256, initialBindings := unset) {
         this.DefineProp("Eval", {Call: Evaluate})
 
         ; Keep the language operators in one registry. Aliases point to the same
@@ -200,6 +200,7 @@ class Interpreter {
         expressionCache := Map()
         expressionCacheOrder := []
         expressionCacheLimit := cacheSize + 0
+        initialContext := _CreateInitialContext()
 
         _Tokenize(source) {
             tokens := []
@@ -476,7 +477,27 @@ class Interpreter {
         }
 
         _CreateEnvironment() {
-            return Map()
+            return _CopyEnvironment(initialContext)
+        }
+
+        _CreateInitialContext() {
+            context := Map()
+            if !IsSet(initialBindings)
+                return context
+            if !(initialBindings is String)
+                throw EvaluationError("Initial bindings must be a source string in the form ((name value) ...).")
+            parsed := _GetOrParseExpression(initialBindings)
+            if !(parsed is SyntaxForm)
+                throw EvaluationError("Initial bindings must be a list of binding forms.")
+            for binding in parsed.items {
+                if !(binding is SyntaxForm)
+                    throw EvaluationError("Initial bindings must be a list of binding forms.", binding)
+                if (binding.items.Length != 2)
+                    throw EvaluationError("Initial bindings must contain (name value) pairs.", binding)
+                name := _GetBindingName(binding.items[1], "constructor bindings")
+                context[name] := _Evaluate(binding.items[2], context)
+            }
+            return context
         }
 
         _Evaluate(expr, env) {
