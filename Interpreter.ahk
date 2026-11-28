@@ -109,6 +109,10 @@ class Interpreter {
     static _OperatorStripPrefix := "strip-prefix"
     static _OperatorStripSuffix := "strip-suffix"
     static _OperatorContains := "contains"
+    static _OperatorMap := "map"
+    static _OperatorFilter := "filter"
+    static _OperatorReduce := "reduce"
+    static _OperatorDistinct := "distinct"
     static _OperatorIn := "in"
     static _OperatorNumberType := "number?"
     static _OperatorIntegerType := "integer?"
@@ -180,6 +184,10 @@ class Interpreter {
             Interpreter._OperatorStripPrefix, _BuiltinStripPrefix,
             Interpreter._OperatorStripSuffix, _BuiltinStripSuffix,
             Interpreter._OperatorContains, _BuiltinContains,
+            Interpreter._OperatorMap, _BuiltinMap,
+            Interpreter._OperatorFilter, _BuiltinFilter,
+            Interpreter._OperatorReduce, _BuiltinReduce,
+            Interpreter._OperatorDistinct, _BuiltinDistinct,
             Interpreter._OperatorIn, _BuiltinContains,
             Interpreter._OperatorNumberType, _BuiltinNumberType,
             Interpreter._OperatorIntegerType, _BuiltinIntegerType,
@@ -1162,6 +1170,71 @@ class Interpreter {
             return _Contains(args[1], args[2])
         }
 
+        _BuiltinMap(args) {
+            _RequireCount(args, 2, Interpreter._OperatorMap)
+            source := _RequireArray(args[1], Interpreter._OperatorMap, "array")
+            mapper := _RequireLambda(args[2], Interpreter._OperatorMap, "mapper")
+            result := []
+            for index, item in source
+                result.Push(_InvokeUnaryOrIndexedLambda(mapper, item, index, Interpreter._OperatorMap))
+            return result
+        }
+
+        _BuiltinFilter(args) {
+            _RequireCount(args, 2, Interpreter._OperatorFilter)
+            source := _RequireArray(args[1], Interpreter._OperatorFilter, "array")
+            predicate := _RequireLambda(args[2], Interpreter._OperatorFilter, "predicate")
+            result := []
+            for index, item in source {
+                if _Truthy(_InvokeUnaryOrIndexedLambda(predicate, item, index, Interpreter._OperatorFilter))
+                    result.Push(item)
+            }
+            return result
+        }
+
+        _BuiltinReduce(args) {
+            if (args.Length < 2 || args.Length > 3)
+                throw EvaluationError(Interpreter._OperatorReduce " expects 2 or 3 arguments")
+            source := _RequireArray(args[1], Interpreter._OperatorReduce, "array")
+            reducer := _RequireLambda(args[2], Interpreter._OperatorReduce, "reducer")
+            useInitial := args.Length = 3
+            if (source.Length = 0 && !useInitial)
+                throw EvaluationError(Interpreter._OperatorReduce " expects a non-empty array when initial value is omitted")
+
+            if useInitial {
+                accumulator := args[3]
+                startIndex := 1
+            } else {
+                accumulator := source[1]
+                startIndex := 2
+            }
+
+            index := startIndex
+            while (index <= source.Length) {
+                accumulator := _InvokeReducerLambda(reducer, accumulator, source[index], index, Interpreter._OperatorReduce)
+                index += 1
+            }
+            return accumulator
+        }
+
+        _BuiltinDistinct(args) {
+            _RequireCount(args, 1, Interpreter._OperatorDistinct)
+            source := _RequireArray(args[1], Interpreter._OperatorDistinct, "array")
+            result := []
+            for item in source {
+                duplicate := false
+                for existing in result {
+                    if _ValuesEqual(existing, item) {
+                        duplicate := true
+                        break
+                    }
+                }
+                if !duplicate
+                    result.Push(item)
+            }
+            return result
+        }
+
         _GetPath(target, path) {
             parts := StrSplit(path, ".")
             for part in parts
@@ -1219,7 +1292,7 @@ class Interpreter {
         _Contains(collection, value) {
             if (collection is Array) {
                 for item in collection
-                    if (item = value)
+                    if _ValuesEqual(item, value)
                         return true
                 return false
             }
@@ -1228,6 +1301,42 @@ class Interpreter {
             if (collection is String)
                 return InStr(collection, value) != 0
             throw EvaluationError("contains expects an array, map, or string")
+        }
+
+        _ValuesEqual(left, right) {
+            if IsObject(left) || IsObject(right)
+                return left == right
+            return left = right
+        }
+
+        _RequireArray(value, op, argumentName) {
+            if !(value is Array)
+                throw EvaluationError(op " expects " argumentName " to be an array")
+            return value
+        }
+
+        _RequireLambda(value, op, argumentName) {
+            if !(value is LambdaFunction)
+                throw EvaluationError(op " expects " argumentName " to be a func value")
+            return value
+        }
+
+        _InvokeUnaryOrIndexedLambda(function, value, index, op) {
+            arity := function.parameters.Length
+            if (arity = 1)
+                return _InvokeLambda(function, [value])
+            if (arity = 2)
+                return _InvokeLambda(function, [value, index])
+            throw EvaluationError(op " callback must accept 1 or 2 parameters")
+        }
+
+        _InvokeReducerLambda(function, accumulator, value, index, op) {
+            arity := function.parameters.Length
+            if (arity = 2)
+                return _InvokeLambda(function, [accumulator, value])
+            if (arity = 3)
+                return _InvokeLambda(function, [accumulator, value, index])
+            throw EvaluationError(op " callback must accept 2 or 3 parameters")
         }
 
         _Number(value) {

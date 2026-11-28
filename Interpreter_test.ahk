@@ -600,6 +600,42 @@ AssertThrows("Contains rejects unsupported values", "(contains 42 1)", "contains
 AssertEval("Array does not contain value", "(contains $numbers 99)", false, collectionEnv)
 AssertEval("Map does not contain key", '(contains $lookup "missing")', false, collectionEnv)
 AssertEval("String does not contain substring", '(contains "hello" "xyz")', false)
+AssertEval("Map applies a single-parameter callback",
+    '(get (map (array 1 2 3) (func (item) (* $item 10))) 3)', 30)
+AssertEval("Map passes one-based index to two-parameter callbacks",
+    '(get (map (array 10 20 30) (func (item index) (+ $item $index))) 3)', 33)
+AssertEval("Map is read-only and preserves source values",
+    '(let* (items (array 1 2 3) mapped (map $items (func (item) (+ $item 5))))'
+    . ' (and (= (length $items) 3) (= (get $items 1) 1) (= (get $mapped 1) 6)))', true)
+AssertEval("Filter keeps matching values",
+    '(length (filter (array 1 2 3 4) (func (item) (= (% $item 2) 0))))', 2)
+AssertEval("Filter supports index-aware predicate",
+    '(get (filter (array 10 20 30) (func (item index) (= $index 2))) 1)', 20)
+AssertEval("Filter is read-only and leaves source unchanged",
+    '(let* (items (array 1 2 3) filtered (filter $items (func (item) (> $item 1))))'
+    . ' (and (= (length $items) 3) (= (length $filtered) 2) (= (get $items 1) 1)))', true)
+AssertEval("Reduce sums values with an explicit initial value",
+    '(reduce (array 1 2 3) (func (acc item) (+ $acc $item)) 0)', 6)
+AssertEval("Reduce sums values without an initial value",
+    '(reduce (array 1 2 3) (func (acc item) (+ $acc $item)))', 6)
+AssertEval("Reduce supports index-aware reducer",
+    '(reduce (array 10 20 30) (func (acc item index) (+ $acc (* $item $index))) 0)', 140)
+AssertEval("Distinct keeps first-seen values in order",
+    '(let (items (distinct (array 3 1 3 2 1)))'
+    . ' (and (= (length $items) 3) (= (get $items 1) 3) (= (get $items 2) 1) (= (get $items 3) 2)))', true)
+AssertEval("Distinct is read-only and does not change source array",
+    '(let* (items (array 1 1 2) unique (distinct $items))'
+    . ' (and (= (length $items) 3) (= (length $unique) 2)))', true)
+AssertThrows("Map validates source type", '(map "abc" (func (item) $item))', "expects array to be an array")
+AssertThrows("Map validates callback arity", '(map (array 1) (func (a b c) $a))', "callback must accept 1 or 2")
+AssertThrows("Filter validates source type", '(filter 42 (func (item) t))', "expects array to be an array")
+AssertThrows("Filter validates callback arity", '(filter (array 1) (func (a b c) t))', "callback must accept 1 or 2")
+AssertThrows("Reduce validates source type",
+    '(reduce "abc" (func (acc item) (+ $acc $item)) 0)', "expects array to be an array")
+AssertThrows("Reduce validates callback arity", '(reduce (array 1) (func (item) $item) 0)', "callback must accept 2 or 3")
+AssertThrows("Reduce requires non-empty source without initial value",
+    '(reduce (array) (func (acc item) (+ $acc $item)))', "non-empty array")
+AssertThrows("Distinct validates source type", '(distinct 42)', "expects array to be an array")
 AssertThrows("Lisp dialect rejects array literals", "[1 2]", "Unexpected delimiter")
 AssertThrows("Lisp dialect rejects map literals", '{"a" 1}', "Unexpected delimiter")
 AssertEval("Strip-prefix leaves unmatched text unchanged", '(strip-prefix "value" "prefix")', "value")
@@ -687,6 +723,10 @@ AssertThrows("Let star rejects odd bindings", "(let* (x 1 y) $x)", "alternating 
 AssertThrows("Let star rejects parenthesized binding pairs", "(let* ((x 2)) $x)", "alternating names and values")
 AssertThrows("Let star rejects invalid binding names", "(let* (a.b 1) 2)", "binding name")
 AssertThrows("Let star cannot see later bindings", "(let* (x $y y 2) $x)", "y")
+AssertThrows("Let initializers cannot read sibling bindings",
+    "(let (items (array 1 2 3) mapped (map $items (func (item) (+ $item 1)))) (length $mapped))", "items")
+AssertEval("Let star supports dependent initializer bindings",
+    "(let* (items (array 1 2 3) mapped (map $items (func (item) (+ $item 1)))) (get $mapped 3))", 4)
 AssertEval("Function accepts arguments and evaluates multiple body forms",
     "((func (x y) (+ $x 1) (+ $x $y)) 2 3)", 5)
 AssertEval("Function can be bound and called by variable",
